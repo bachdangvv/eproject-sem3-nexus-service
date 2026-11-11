@@ -1,0 +1,6 @@
+bin/
+obj/
+demo.db*
+data/
+*.user
+TestResults/
