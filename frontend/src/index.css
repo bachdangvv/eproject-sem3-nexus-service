@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply font-sans text-slate-900 antialiased selection:bg-brand-soft/20 selection:text-brand-accent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-card transition-all duration-200;
+  }
+  .card-hover {
+    @apply hover:-translate-y-0.5 hover:shadow-lg hover:border-indigo-100;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-brand-soft px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition-all duration-150 hover:bg-brand-accent hover:shadow-lg hover:shadow-indigo-500/25 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer;
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-150 hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 cursor-pointer;
+  }
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-widest text-brand-soft;
+  }
+  .input-base {
+    @apply min-h-[44px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-900 transition-all duration-150 placeholder:text-slate-400 focus:border-brand-soft focus:outline-none focus:ring-2 focus:ring-indigo-100;
+  }
+}
+
+input[type='range']::-webkit-slider-thumb {
+  @apply h-5 w-5 appearance-none rounded-full bg-brand-soft shadow-md border-2 border-white cursor-pointer transition-transform duration-100 hover:scale-110 active:scale-95;
+}
+input[type='range']::-moz-range-thumb {
+  @apply h-5 w-5 rounded-full bg-brand-soft shadow-md border-2 border-white cursor-pointer transition-transform duration-100 hover:scale-110 active:scale-95;
+}
