@@ -30,6 +30,11 @@ public abstract partial class NexusDb
             entity.Property(customer => customer.Phone).HasMaxLength(16);
             entity.Property(customer => customer.Address).HasMaxLength(240);
             entity.Property(customer => customer.CityCode).HasMaxLength(3);
+            entity.Property(customer => customer.TaxId).HasMaxLength(32);
+            entity.Property(customer => customer.Email).HasMaxLength(160);
+            entity.Property(customer => customer.ContactPerson).HasMaxLength(120);
+            entity.Property(customer => customer.CustomerType).HasMaxLength(40);
+            entity.Property(customer => customer.Status).HasMaxLength(40);
         });
 
         model.Entity<ServicePlan>(entity =>

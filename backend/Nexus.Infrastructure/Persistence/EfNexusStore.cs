@@ -43,11 +43,12 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     public Task<Customer?> FindCustomerAsync(int id) => db.Customers.FindAsync(id).AsTask();
 
     public async Task<IReadOnlyList<ServiceRequest>> ListPendingRequestsAsync() =>
-        await db.Requests.AsNoTracking().Where(request => !request.Confirmed).Include(request => request.Customer)
+        await db.Requests.AsNoTracking().Where(request => !request.Confirmed)
+            .Include(request => request.Customer).Include(request => request.Plan)
             .OrderByDescending(request => request.Id).Take(100).ToListAsync();
 
     public Task<ServiceRequest?> FindRequestForConfirmationAsync(int id) =>
-        db.Requests.Include(request => request.Customer).Include(request => request.Order)
+        db.Requests.Include(request => request.Customer).Include(request => request.Plan).Include(request => request.Order)
             .ThenInclude(order => order!.Connection).SingleOrDefaultAsync(request => request.Id == id);
 
     public async Task<IReadOnlyList<ServiceOrder>> ListOrdersAsync(OrderNumber? number, OrderStatus? status)
@@ -62,6 +63,23 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
 
     public Task<ServiceOrder?> FindOrderAsync(OrderNumber number) =>
         Orders().SingleOrDefaultAsync(order => order.Id == number.Serial && order.Request.Type == number.Type);
+
+    public Task<ServiceOrder?> FindOrderByAccountIdAsync(string accountId)
+    {
+        var value = accountId.Trim().ToUpperInvariant();
+        if (value.Length != 16 || value[0] is not ('D' or 'B' or 'T') ||
+            !int.TryParse(value.AsSpan(1, 3), out var cityCode) ||
+            !long.TryParse(value.AsSpan(4), out var connectionId))
+            return Task.FromResult<ServiceOrder?>(null);
+
+        var city = cityCode.ToString("D3");
+        var type = value[..1];
+        return Orders().SingleOrDefaultAsync(order =>
+            order.Request.Type == type &&
+            order.Connection != null &&
+            order.Connection.Id == connectionId &&
+            order.Connection.CityCode == city);
+    }
 
     public Task<ServiceOrder?> ReadOrderByRequestAsync(int requestId) =>
         Orders().AsNoTracking().SingleOrDefaultAsync(order => order.RequestId == requestId);
@@ -96,5 +114,7 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     }
 
     private IQueryable<ServiceOrder> Orders() =>
-        db.Orders.Include(order => order.Request).ThenInclude(request => request.Customer).Include(order => order.Connection);
+        db.Orders.Include(order => order.Request).ThenInclude(request => request.Customer)
+            .Include(order => order.Request).ThenInclude(request => request.Plan)
+            .Include(order => order.Connection);
 }

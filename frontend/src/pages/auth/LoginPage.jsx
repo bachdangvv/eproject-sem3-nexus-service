@@ -7,6 +7,7 @@ import {
   DEMO_DEFAULT_PASSWORD,
   ROLES_INFO,
 } from '../../services/authService'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 import {
   Network,
   ArrowLeft,
@@ -52,7 +53,7 @@ const DEMO_CUSTOMER_SAMPLES = [
 export default function LoginPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('login')
-  const [role, setRole] = useState('customer')
+  const [role, setRole] = useState(REVIEW1_API_MODE ? 'retail' : 'customer')
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -76,6 +77,7 @@ export default function LoginPage() {
   }, [])
 
   const activeRole = ROLES.find((r) => r.id === role)
+  const authModeLabel = REVIEW1_API_MODE ? 'Backend Session' : 'Mock Directory'
 
   function handleQuickRoleSelect(r) {
     setRole(r.id)
@@ -85,6 +87,10 @@ export default function LoginPage() {
   }
 
   function handleInstantDemoPreview(targetRole, options = {}) {
+    if (REVIEW1_API_MODE) {
+      setError('Quick local role preview is disabled in Review 1 API mode. Sign in through the backend session.')
+      return
+    }
     setError('')
     const user = enterDemoRole(targetRole, options)
     navigate(user.dashboardRoute)
@@ -104,7 +110,7 @@ export default function LoginPage() {
       navigate(user.dashboardRoute)
     } catch (err) {
       setLoading(false)
-      setError(err.message || 'Mock directory verification failed. Please check credentials.')
+      setError(err.message || `${authModeLabel} verification failed. Please check credentials.`)
     }
   }
 
@@ -146,7 +152,7 @@ export default function LoginPage() {
               <span className="leading-tight">
                 <span className="block text-sm font-extrabold tracking-wide text-navy">NEXUS CORE</span>
                 <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                  DEMO ROLE SANDBOX
+                  {REVIEW1_API_MODE ? 'REVIEW 1 API SESSION' : 'DEMO ROLE SANDBOX'}
                 </span>
               </span>
             </Link>
@@ -186,7 +192,9 @@ export default function LoginPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-navy">Nexus Telecom Demo Portal</h1>
               </div>
               <p className="mt-2 text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                Frontend role switcher &amp; mock directory lookup for the 5 telecom portals. Sessions are stored locally in browser state and are not server-verified authentication.
+                {REVIEW1_API_MODE
+                  ? 'Sign in through the Review 1 backend session. Customer portal login and production IAM are outside the current integration scope.'
+                  : 'Frontend role switcher &amp; mock directory lookup for the 5 telecom portals. Sessions are stored locally in browser state and are not server-verified authentication.'}
               </p>
             </div>
 
@@ -201,7 +209,7 @@ export default function LoginPage() {
                       : 'text-slate-600 hover:text-navy hover:bg-white/50'
                   }`}
                 >
-                  <KeyRound size={13} /> Mock Auth &amp; Role Switcher
+                  <KeyRound size={13} /> {REVIEW1_API_MODE ? 'Backend Auth' : 'Mock Auth &amp; Role Switcher'}
                 </button>
                 <button
                   type="button"
@@ -222,7 +230,10 @@ export default function LoginPage() {
                 <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-[11px] text-amber-900 leading-relaxed">
                   <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-600" />
                   <div>
-                    <span className="font-bold">Demo Mode Disclaimer:</span> Quick role buttons switch personas locally for UI walkthroughs (not real security). Below, Mock Directory Login only accepts registered staff emails/IDs or verified customer IDs (<span className="font-mono font-semibold">CUS-xxx</span>, Tax ID, Account ID, Order ID, or customer email; default password <span className="font-mono font-semibold">{DEMO_DEFAULT_PASSWORD}</span>) and blocks role escalation.
+                    <span className="font-bold">{REVIEW1_API_MODE ? 'Review 1 API:' : 'Demo Mode Disclaimer:'}</span>{' '}
+                    {REVIEW1_API_MODE
+                      ? `Backend session login is active. Use a seeded employee account and the configured demo password (${DEMO_DEFAULT_PASSWORD}).`
+                      : <>Quick role buttons switch personas locally for UI walkthroughs (not real security). Below, Mock Directory Login only accepts registered staff emails/IDs or verified customer IDs (<span className="font-mono font-semibold">CUS-xxx</span>, Tax ID, Account ID, Order ID, or customer email; default password <span className="font-mono font-semibold">{DEMO_DEFAULT_PASSWORD}</span>) and blocks role escalation.</>}
                   </div>
                 </div>
 
@@ -231,16 +242,16 @@ export default function LoginPage() {
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
                       Step 1: Select Role or Launch Demo Preview
                     </label>
-                    <button
+                    {!REVIEW1_API_MODE && <button
                       type="button"
                       onClick={() => handleInstantDemoPreview(role)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
                     >
                       <Sparkles size={12} /> Quick Demo Preview ({activeRole?.label})
-                    </button>
+                    </button>}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                    {ROLES.map((r) => {
+                    {ROLES.filter((r) => !REVIEW1_API_MODE || r.id !== 'customer').map((r) => {
                       const Icon = r.icon
                       const active = role === r.id
                       return (
@@ -344,7 +355,7 @@ export default function LoginPage() {
                         onChange={(e) => setRemember(e.target.checked)}
                         className="rounded border-slate-300 text-brand-soft focus:ring-brand-soft cursor-pointer"
                       />
-                      Keep demo session in localStorage
+                      {REVIEW1_API_MODE ? 'Keep signed-in user cache locally' : 'Keep demo session in localStorage'}
                     </label>
                     <Link
                       to="/coming-soon?topic=password-recovery"
@@ -367,10 +378,10 @@ export default function LoginPage() {
                   >
                     {loading ? (
                       <>
-                        <Loader2 size={16} className="animate-spin" /> Checking Mock Directory...
+                        <Loader2 size={16} className="animate-spin" /> Checking {authModeLabel}...
                       </>
                     ) : (
-                      <>Sign In via Mock Directory &rarr;</>
+                      <>Sign In via {authModeLabel} &rarr;</>
                     )}
                   </button>
                 </form>
@@ -535,7 +546,7 @@ export default function LoginPage() {
               <ShieldAlert size={13} className="text-amber-600" /> Semester 3 Local Sandbox
             </span>
             <span>&bull;</span>
-            <span>Mock Directory &amp; Role Preview Environment</span>
+            <span>{REVIEW1_API_MODE ? 'Review 1 API Session Environment' : 'Mock Directory &amp; Role Preview Environment'}</span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/coming-soon?topic=security-policy" className="hover:text-brand-accent transition">

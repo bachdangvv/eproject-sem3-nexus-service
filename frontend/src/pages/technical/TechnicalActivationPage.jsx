@@ -45,6 +45,7 @@ import {
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { ORDER_STATUS } from '../../utils/orderStatus'
 import OrderStatusBadge from '../../components/common/OrderStatusBadge'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 export default function TechnicalActivationPage() {
   const location = useLocation()
@@ -183,10 +184,10 @@ export default function TechnicalActivationPage() {
   }, [serialNumber, macAddress, inventoryRevision])
 
   const isMatchedDeviceAvailable = Boolean(
-    matchedWarehouseDevice &&
+    REVIEW1_API_MODE || (matchedWarehouseDevice &&
       matchedWarehouseDevice.status === 'IN_STOCK' &&
       !matchedWarehouseDevice.assignedOrderId &&
-      !matchedWarehouseDevice.contractAccount
+      !matchedWarehouseDevice.contractAccount)
   )
 
   const calculatedAccountId = useMemo(() => {
@@ -212,11 +213,11 @@ export default function TechnicalActivationPage() {
   }
 
   async function handleCommission() {
-    if (!serialNumber.trim() || !macAddress.trim()) {
+    if (!REVIEW1_API_MODE && (!serialNumber.trim() || !macAddress.trim())) {
       showToast('Please provide both Serial Number and MAC Address.', 'error')
       return
     }
-    if (!isMatchedDeviceAvailable) {
+    if (!REVIEW1_API_MODE && !isMatchedDeviceAvailable) {
       const reason = matchedWarehouseDevice
         ? `Hardware ${matchedWarehouseDevice.serialNumber} is ${matchedWarehouseDevice.status} and cannot be reassigned.`
         : `Hardware S/N "${serialNumber}" is not available in warehouse stock.`

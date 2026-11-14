@@ -20,7 +20,12 @@ public sealed record CustomerInput(
     [property: Required, StringLength(120)] string Name,
     [property: Required, RegularExpression(@"^\+?[0-9]{7,15}$")] string Phone,
     [property: Required, StringLength(240)] string Address,
-    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode);
+    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode,
+    [property: StringLength(32)] string? TaxId = null,
+    [property: EmailAddress, StringLength(160)] string? Email = null,
+    [property: StringLength(120)] string? ContactPerson = null,
+    [property: StringLength(40)] string? CustomerType = null,
+    [property: RegularExpression("^(ACTIVE|SUSPENDED)$")] string? Status = null);
 
 public sealed record PlanInput(
     [property: Required, StringLength(100)] string Name,

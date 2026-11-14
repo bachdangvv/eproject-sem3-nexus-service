@@ -22,6 +22,7 @@ import {
   resetEmployeePassword,
 } from '../../services/adminUserService'
 import { fetchRetailStores } from '../../services/vendorShopService'
+import { REVIEW1_API_MODE, fetchEmployeesApi, createEmployeeApi } from '../../services/review1Api'
 
 const DEFAULT_HUB_OPTIONS = [
   { id: 'STORE-HN-001', label: 'Cau Giay Flagship Store (HN)', name: 'Hanoi Cau Giay Flagship Store' },
@@ -59,8 +60,8 @@ export default function AdminUsersPage() {
     loadData()
   }, [])
 
-  function loadData() {
-    setEmployees(fetchEmployees())
+  async function loadData() {
+    setEmployees(REVIEW1_API_MODE ? await fetchEmployeesApi() : fetchEmployees())
     setRetailStores(fetchRetailStores())
   }
 
@@ -122,29 +123,55 @@ export default function AdminUsersPage() {
   }
 
   function handleUnlock(id, name) {
+    if (REVIEW1_API_MODE) {
+      showToast('Employee lock/unlock management is not part of the current Review 1 API.', 'error')
+      return
+    }
     const updated = unlockEmployee(id)
     setEmployees(updated)
     showToast(`Access credentials unlocked for ${name}. Failed counter reset to 0.`)
   }
 
   function handleToggleStatus(id, name) {
+    if (REVIEW1_API_MODE) {
+      showToast('Employee status management is not part of the current Review 1 API.', 'error')
+      return
+    }
     const updated = toggleEmployeeStatus(id)
     setEmployees(updated)
     showToast(`Operational account status toggled for ${name}.`)
   }
 
   function handleResetPassword(id, name) {
+    if (REVIEW1_API_MODE) {
+      showToast('Password reset is not part of the current Review 1 API.', 'error')
+      return
+    }
     const { employees: updated, tempPass } = resetEmployeePassword(id)
     setEmployees(updated)
     setTempPassAlert({ name, tempPass })
   }
 
-  function handleSaveEmployee(e) {
+  async function handleSaveEmployee(e) {
     e.preventDefault()
     setFormError('')
     const resolvedHubName = resolveHubName(formData.hubId)
 
     try {
+      if (REVIEW1_API_MODE) {
+        if (modalMode !== 'create') {
+          throw new Error('Editing existing employee profiles is not part of the current Review 1 API.')
+        }
+        const created = await createEmployeeApi({
+          ...formData,
+          username: formData.email,
+          displayName: formData.fullName,
+        })
+        setEmployees((current) => [created, ...current])
+        closeModal()
+        showToast(`Employee account "${created.fullName}" created in backend.`)
+        return
+      }
       if (modalMode === 'create') {
         const updated = addEmployee({
           ...formData,

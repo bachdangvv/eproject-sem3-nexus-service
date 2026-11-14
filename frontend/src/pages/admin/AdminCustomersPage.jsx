@@ -24,6 +24,12 @@ import {
   updateCustomer,
   deleteCustomer,
 } from '../../services/customerService'
+import {
+  REVIEW1_API_MODE,
+  fetchCustomersApi,
+  createCustomerApi,
+  updateCustomerApi,
+} from '../../services/review1Api'
 
 const EMPTY_FORM = {
   customerName: '',
@@ -44,7 +50,10 @@ export default function AdminCustomersPage() {
     isLoading,
     error,
     reload: reloadCustomers,
-  } = useAsyncResource(() => Promise.resolve(fetchCustomers()), [])
+  } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchCustomersApi() : Promise.resolve(fetchCustomers())),
+    []
+  )
   const customers = customersData || []
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -112,10 +121,31 @@ export default function AdminCustomersPage() {
     setFormError('')
   }
 
-  function handleSaveCustomer(e) {
+  async function handleSaveCustomer(e) {
     e.preventDefault()
     setFormError('')
     try {
+      if (REVIEW1_API_MODE) {
+        const saved = modalMode === 'create'
+          ? await createCustomerApi(formData)
+          : await updateCustomerApi(editingCustomer.id, formData)
+        const enriched = {
+          ...saved,
+          ...formData,
+          customerName: formData.customerName,
+          customerId: saved.customerId,
+          id: saved.id,
+          status: formData.status || 'ACTIVE',
+        }
+        setCustomers((prev) => modalMode === 'create'
+          ? [enriched, ...(prev || [])]
+          : (prev || []).map((c) => (c.id === enriched.id ? enriched : c)))
+        showToast(modalMode === 'create'
+          ? `Customer "${enriched.customerName}" (${enriched.customerId}) created in backend.`
+          : `Updated customer record ${enriched.customerId}.`)
+        closeModal()
+        return
+      }
       if (modalMode === 'create') {
         const created = createCustomer(formData)
         setCustomers((prev) => [created, ...(prev || [])])
@@ -131,7 +161,11 @@ export default function AdminCustomersPage() {
     }
   }
 
-  function handleToggleStatus(customer) {
+  async function handleToggleStatus(customer) {
+    if (REVIEW1_API_MODE) {
+      showToast('Customer status lifecycle is not part of the current Review 1 backend contract.', 'error')
+      return
+    }
     const nextStatus = customer.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
     try {
       const updated = updateCustomer(customer.id, { status: nextStatus })
@@ -144,6 +178,11 @@ export default function AdminCustomersPage() {
 
   function handleConfirmDelete() {
     if (!deletingCustomer) return
+    if (REVIEW1_API_MODE) {
+      showToast('Customer deletion is intentionally excluded from Review 1 API to preserve order history.', 'error')
+      setDeletingCustomer(null)
+      return
+    }
     try {
       const nextList = deleteCustomer(deletingCustomer.id)
       setCustomers(nextList)

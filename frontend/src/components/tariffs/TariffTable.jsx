@@ -33,6 +33,13 @@ import {
 import { STATUTORY_TAX_RATE_PERCENT, calculateStatutoryTax } from '../../services/taxConfig'
 import { downloadCsvDocument } from '../../utils/telecomDocumentGenerator'
 import { useToast } from '../../hooks/useToast'
+import {
+  REVIEW1_API_MODE,
+  fetchPlansApi,
+  createPlanApi,
+  updatePlanApi,
+  archivePlanApi,
+} from '../../services/review1Api'
 
 const INITIAL_FORM_STATE = {
   sku: '',
@@ -90,7 +97,7 @@ function formatRevisionTimestamp(iso) {
 }
 
 export default function TariffTable({ readOnly = false }) {
-  const [plans, setPlans] = useState(() => fetchPlans())
+  const [plans, setPlans] = useState(() => (REVIEW1_API_MODE ? [] : fetchPlans()))
   const [versionHistory, setVersionHistory] = useState(() => fetchPlanVersionHistory())
   const [catalogMeta, setCatalogMeta] = useState(() => getPlanCatalogVersionMeta())
   const taxRate = STATUTORY_TAX_RATE_PERCENT
@@ -113,14 +120,24 @@ export default function TariffTable({ readOnly = false }) {
   const [formData, setFormData] = useState(INITIAL_FORM_STATE)
 
   useEffect(() => {
+    let cancelled = false
     fetchTaxRate()
-    const syncState = () => {
+    const syncState = async () => {
+      if (REVIEW1_API_MODE) {
+        const remotePlans = await fetchPlansApi(true)
+        if (cancelled) return
+        setPlans(remotePlans)
+        setVersionHistory([])
+        setCatalogMeta({ versionTag: 'BACKEND', changedAt: null, changedBy: 'Review 1 API' })
+        return
+      }
       setPlans(fetchPlans())
       setVersionHistory(fetchPlanVersionHistory())
       setCatalogMeta(getPlanCatalogVersionMeta())
     }
     syncState()
-    return subscribePlansUpdated(syncState)
+    if (REVIEW1_API_MODE) return () => { cancelled = true }
+    return subscribePlansUpdated(() => { syncState() })
   }, [])
 
   const activePlansCount = useMemo(
@@ -205,7 +222,7 @@ export default function TariffTable({ readOnly = false }) {
     setViewSection('HISTORY')
   }
 
-  function handleSavePlan(e) {
+  async function handleSavePlan(e) {
     e.preventDefault()
     if (readOnly) return
     setFormError('')
@@ -228,6 +245,17 @@ export default function TariffTable({ readOnly = false }) {
     const changeReason = formData.changeReason.trim()
 
     try {
+      if (REVIEW1_API_MODE) {
+        const saved = editingPlanId
+          ? await updatePlanApi(editingPlanId, payload)
+          : await createPlanApi(payload)
+        setPlans((current) => editingPlanId
+          ? current.map((item) => item.id === String(editingPlanId) ? saved : item)
+          : [saved, ...current])
+        closeModal()
+        showToast(editingPlanId ? 'Plan updated in backend catalog.' : 'Plan created in backend catalog.')
+        return
+      }
       const updated = editingPlanId
         ? updatePlan(editingPlanId, payload, { changeReason })
         : addPlan(payload, { changeReason })
@@ -245,8 +273,21 @@ export default function TariffTable({ readOnly = false }) {
     }
   }
 
-  function handleConfirmDeletePlan() {
+  async function handleConfirmDeletePlan() {
     if (readOnly || !deletingPlan) return
+    if (REVIEW1_API_MODE) {
+      try {
+        await archivePlanApi(deletingPlan.id)
+        setPlans((current) => current.map((item) => item.id === deletingPlan.id
+          ? { ...item, active: false, status: 'INACTIVE' }
+          : item))
+        showToast(`Plan ${deletingPlan.name} archived in backend catalog.`)
+        setDeletingPlan(null)
+      } catch (err) {
+        showToast(err?.message || 'Unable to archive plan.')
+      }
+      return
+    }
     const updated = deletePlan(deletingPlan.id)
     setPlans(updated)
     setVersionHistory(fetchPlanVersionHistory())

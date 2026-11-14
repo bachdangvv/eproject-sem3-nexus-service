@@ -97,11 +97,12 @@ try {
     $null = Call $admin "/products/$($product.id)" 'DELETE' $null 204
     Check ((Call $admin '/products' | Where-Object id -eq $product.id).active -eq $false) 'product create, edit and archive'
 
-    $customerPayload = @{name='Nguyễn Văn A';phone='0900000001';address='10 Nexus Street';cityCode='101'}
+    $customerPayload = @{name='Nguyễn Văn A';phone='0900000001';address='10 Nexus Street';cityCode='101';taxId='0101234567';email='a@example.vn';contactPerson='Nguyen Van A';customerType='Corporate'}
     $invalidCustomer = $customerPayload.Clone()
     $invalidCustomer.phone = 'invalid'
     $null = Call $retail '/customers' 'POST' $invalidCustomer 400
     $customer = Call $retail '/customers' 'POST' $customerPayload 201
+    Check ($customer.taxId -eq '0101234567' -and $customer.email -eq 'a@example.vn' -and $customer.contactPerson -eq 'Nguyen Van A') 'customer Review 1 profile fields persisted'
     $customerPayload.address = '12 Nexus Street'
     $customer = Call $retail "/customers/$($customer.id)" 'PUT' $customerPayload
     $byCode = @(Call $retail "/customers?q=$($customer.code)")
@@ -131,6 +132,11 @@ try {
     $tracking = Call $retail "$route"
     $found = @(Call $retail "/orders?code=$($order.code)")
     Check (($tracking.history.status -join ',') -eq 'Pending,Feasible,Connected' -and $found[0].accountId -eq $connected.accountId) 'Retail order search and audit history'
+    $public = @{ Cookies = [Microsoft.PowerShell.Commands.WebRequestSession]::new(); Token = $null }
+    $publicOrder = Call $public "/public/track/order/$($order.code)"
+    $publicAccount = Call $public "/public/track/account/$($connected.accountId)"
+    Check ($publicOrder.id -eq $order.code -and $publicOrder.accountId -eq $connected.accountId -and
+        $publicAccount.id -eq $connected.accountId -and $publicAccount.orderId -eq $order.code) 'public order and account tracking'
     $null = Call $retail "$route/feedback" 'POST' @{rating=5;comment='Kết nối hoạt động ổn định.'} 201
     Check ((Call $retail $route).feedback[0].rating -eq 5) 'feedback saved on the connected order'
 

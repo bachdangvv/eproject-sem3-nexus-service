@@ -49,6 +49,25 @@ dotnet build backend/Nexus.slnx
 - [ERD và quy tắc vòng đời đơn](docs/erd.md)
 - [API contract](docs/api.md)
 
+## Chạy Review 1 FE + BE
+
+Terminal 1:
+
+```powershell
+$env:Logging__EventLog__LogLevel__Default = "None"
+dotnet run --project backend/Nexus.Api -- --demo --urls http://127.0.0.1:5168
+```
+
+Terminal 2:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Mở `http://localhost:5173`. FE dùng Review 1 API mode mặc định; đặt `VITE_USE_MOCK=true` nếu cần chạy fixture cục bộ. Tài khoản demo BE dùng mật khẩu `Nexus-Demo-2026!`.
+
 ## Cấu hình SQL Server
 
 Đặt `ConnectionStrings__Nexus` trỏ tới SQL Server của dự án. Khởi động qua HTTPS và bỏ cờ `--demo`. API áp dụng migration SQL Server lúc khởi động. Tài khoản SQL cần quyền áp dụng migration trong giai đoạn khởi tạo. Khi database chưa có nhân viên, dùng biến môi trường `NexusBootstrapPassword` dài 12–128 ký tự để tạo tài khoản `admin` một lần, rồi bỏ biến khỏi môi trường chạy. Admin có thể thêm thành phố, gói và tài khoản nhân viên qua API. Nếu truy cập bằng tên máy chủ khác, cấu hình `AllowedHosts` tương ứng.

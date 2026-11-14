@@ -6,10 +6,17 @@ import {
   findInventoryDeviceBySerialOrMac,
   subscribeInventoryUpdated,
 } from './inventoryService.js'
+import {
+  REVIEW1_API_MODE,
+  fetchOrdersApi,
+  fetchOrderDetailApi,
+  connectOrderApi,
+} from './review1Api.js'
 
 const ACTIVATED_ACCOUNTS_STORAGE_KEY = 'nexus_activated_accounts'
 
 export function fetchAvailableWarehouseDevices(serviceType = null) {
+  if (REVIEW1_API_MODE) return []
   return fetchAvailableInventoryForService(serviceType)
 }
 
@@ -63,12 +70,17 @@ export function toActivationOrder(order) {
 }
 
 export function getActivationQueue() {
+  if (REVIEW1_API_MODE) return []
   return fetchOrders()
     .filter((ord) => ord.status === ORDER_STATUS.FEASIBLE)
     .map(toActivationOrder)
 }
 
 export async function loadActivationQueue() {
+  if (REVIEW1_API_MODE) {
+    const orders = await fetchOrdersApi({ status: 'FEASIBLE' })
+    return orders.map(toActivationOrder)
+  }
   await new Promise((resolve) => setTimeout(resolve, 120))
   return getActivationQueue()
 }
@@ -92,6 +104,10 @@ export function previewNextAccountId(servicePrefix, cityCode = '101') {
 }
 
 export async function commissionCircuit(orderId, provisioningPayload) {
+  if (REVIEW1_API_MODE) {
+    return connectOrderApi(orderId)
+  }
+
   await new Promise((resolve) => setTimeout(resolve, 350))
 
   const order = findActivationOrderById(orderId)
@@ -377,11 +393,16 @@ export function updateAccountConnectionStatus(accountId, newStatus = 'ACTIVE') {
 }
 
 export function findActivationOrderById(orderId) {
+  if (REVIEW1_API_MODE) return null
   const found = findOrderById(orderId)
   return toActivationOrder(found)
 }
 
 export async function loadActivationOrderById(orderId) {
+  if (REVIEW1_API_MODE) {
+    const detail = await fetchOrderDetailApi(orderId)
+    return toActivationOrder(detail)
+  }
   await new Promise((resolve) => setTimeout(resolve, 120))
   return findActivationOrderById(orderId)
 }

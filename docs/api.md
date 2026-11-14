@@ -46,4 +46,15 @@ Feedback { rating, comment, createdAt }
 
 `accountId` và `activatedAt` là `null` cho tới khi cấp kết nối. `status` nhận `Pending`, `Feasible`, `NotFeasible` hoặc `Connected`. Kết quả API dùng `NotFeasible`, còn giao diện hiển thị `Not Feasible`.
 
+Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `contactPerson`, `customerType` và `status`. FE dùng `id` số làm khóa API và `code` dạng `CUS-000001` để hiển thị.
+
+## Public tracking
+
+| Method và đường dẫn | Quyền | Response |
+| --- | --- | --- |
+| `GET /public/track/order/{code}` | Công khai | Trạng thái order, service type, city và Account ID nếu đã connected |
+| `GET /public/track/account/{accountId}` | Công khai | Trạng thái account và order liên kết |
+
+Public tracking chỉ trả dữ liệu nền để FE tự mask customer name và route trước khi hiển thị.
+
 Lỗi 400 cho dữ liệu hoặc token CSRF không hợp lệ, 401 khi phiên hoặc đăng nhập không hợp lệ, 403 khi thiếu quyền, 404 khi không tìm thấy bản ghi, 409 khi sai bước xử lý hoặc trùng dữ liệu và 429 khi vượt giới hạn đăng nhập.

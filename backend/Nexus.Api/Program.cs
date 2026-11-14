@@ -91,4 +91,5 @@ api.MapGet("/session", (HttpContext context, IAntiforgery tokens) =>
 api.MapStaff();
 api.MapCatalog();
 api.MapOperations();
+api.MapPublic();
 app.Run();

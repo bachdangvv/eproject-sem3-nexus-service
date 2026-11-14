@@ -35,6 +35,7 @@ import AsyncStatePanel from '../../components/common/AsyncStatePanel'
 import OrderStatusBadge from '../../components/common/OrderStatusBadge'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { ORDER_STATUS } from '../../utils/orderStatus'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 function resolvePresetReasonState(rejectionReason, isOverDistance, isMissingDocs) {
   const trimmed = String(rejectionReason || '').trim()
@@ -133,13 +134,24 @@ export default function TechnicalSurveyPage() {
   const [submitError, setSubmitError] = useState(null)
 
   const selectedDocVerification = useMemo(
-    () => validateOrderDocumentsPresent(selectedOrder),
+    () => REVIEW1_API_MODE
+      ? {
+          isComplete: true,
+          hasNationalId: false,
+          hasAddressProof: false,
+          nationalId: null,
+          addressProof: null,
+          missing: [],
+        }
+      : validateOrderDocumentsPresent(selectedOrder),
     [selectedOrder]
   )
 
   const syncFormFromOrder = useCallback((ord) => {
     if (!ord) return
-    const docs = validateOrderDocumentsPresent(ord)
+    const docs = REVIEW1_API_MODE
+      ? { isComplete: true }
+      : validateOrderDocumentsPresent(ord)
     const dist = ord.distanceMeters || 200
     const isOver = Number(dist) > MAX_SURVEY_DISTANCE_METERS
     const presetState = resolvePresetReasonState(
@@ -167,6 +179,15 @@ export default function TechnicalSurveyPage() {
   }, [selectedOrder?.id, syncFormFromOrder])
 
   useEffect(() => {
+    if (REVIEW1_API_MODE) {
+      setDocStorageState({
+        checking: false,
+        nationalIdAvailable: true,
+        addressProofAvailable: true,
+      })
+      return undefined
+    }
+
     let cancelled = false
     if (!selectedOrder) {
       setDocStorageState({
@@ -232,14 +253,15 @@ export default function TechnicalSurveyPage() {
     !isOverDistanceLimit ||
     (formAllowOverride && formOverrideReason.trim().length >= MIN_OVERRIDE_REASON_LENGTH)
   const isDocsVerified =
-    selectedDocVerification.isComplete &&
+    REVIEW1_API_MODE || (selectedDocVerification.isComplete &&
     !docStorageState.checking &&
     docStorageState.nationalIdAvailable &&
-    docStorageState.addressProofAvailable
+    docStorageState.addressProofAvailable)
   const isMissingOrUnavailableDocs =
-    !selectedDocVerification.isComplete ||
+    (!REVIEW1_API_MODE && !selectedDocVerification.isComplete) ||
+    (!REVIEW1_API_MODE &&
     (!docStorageState.checking &&
-      (!docStorageState.nationalIdAvailable || !docStorageState.addressProofAvailable))
+      (!docStorageState.nationalIdAvailable || !docStorageState.addressProofAvailable)))
   const isSubmitBlocked =
     formResult === 'FEASIBLE' &&
     (!isDistanceValid || docStorageState.checking || isMissingOrUnavailableDocs || !isOverrideReady)
@@ -305,6 +327,7 @@ export default function TechnicalSurveyPage() {
           conduitType: formConduit,
           odfName: selectedOrder.odfName,
           rxPowerDbm: -18.4,
+          landlineFeasible: selectedOrder.serviceType !== 'DIALUP' || selectedOrder.hasNexusLandline === true,
           fieldEngineer: 'Do Manh Cuong (NOC)',
           allowDistanceOverride: isOverDistanceLimit && formAllowOverride,
           overrideReason: isOverDistanceLimit && formAllowOverride ? formOverrideReason.trim() : '',
@@ -640,7 +663,11 @@ export default function TechnicalSurveyPage() {
                           <FileText size={13} className="text-brand" />
                           <span>Verification Dossier (KYC)</span>
                         </span>
-                        {docStorageState.checking ? (
+                        {REVIEW1_API_MODE ? (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">
+                            Not required in Review 1 API
+                          </span>
+                        ) : docStorageState.checking ? (
                           <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                             Verifying storage...
                           </span>
@@ -655,6 +682,11 @@ export default function TechnicalSurveyPage() {
                         )}
                       </div>
 
+                      {REVIEW1_API_MODE ? (
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-[11px] text-sky-800">
+                          Review 1 currently evaluates technical feasibility through the backend assessment contract. Document upload and KYC storage are intentionally outside this flow.
+                        </div>
+                      ) : (
                       <div className="space-y-1.5">
                         {[
                           {
@@ -727,8 +759,9 @@ export default function TechnicalSurveyPage() {
                           )
                         })}
                       </div>
+                      )}
 
-                      {isMissingOrUnavailableDocs && (
+                      {!REVIEW1_API_MODE && isMissingOrUnavailableDocs && (
                         <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] font-semibold text-rose-700 flex items-start gap-2">
                           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                           <span>

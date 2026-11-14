@@ -36,6 +36,13 @@ import { getTierInfo } from '../../services/bulkScheme'
 import { copyToClipboard } from '../../utils/clipboard'
 import { ORDER_STATUS } from '../../utils/orderStatus'
 import OrderStatusBadge from '../../components/common/OrderStatusBadge'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
+import {
+  REVIEW1_API_MODE,
+  fetchCitiesApi,
+  fetchCustomersApi,
+  fetchPlansApi,
+} from '../../services/review1Api'
 
 const CITIES = [
   { code: '101', name: 'Hanoi', short: 'HN', prefix: '101' },
@@ -80,10 +87,28 @@ export default function NewOrderPage() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
 
-  const registeredCustomers = useMemo(
+  const localRegisteredCustomers = useMemo(
     () => fetchCustomers().filter((c) => c.status === 'ACTIVE'),
     []
   )
+  const { data: apiCustomers } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchCustomersApi() : Promise.resolve(localRegisteredCustomers)),
+    [localRegisteredCustomers]
+  )
+  const registeredCustomers = REVIEW1_API_MODE ? (apiCustomers || []) : localRegisteredCustomers
+  const { data: apiCities } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchCitiesApi() : Promise.resolve(null)),
+    []
+  )
+  const cities = useMemo(() => {
+    if (!REVIEW1_API_MODE || !Array.isArray(apiCities) || apiCities.length === 0) return CITIES
+    return apiCities.map((city) => ({
+      code: city.code,
+      name: city.name,
+      short: String(city.code).slice(-2),
+      prefix: city.code,
+    }))
+  }, [apiCities])
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [taxId, setTaxId] = useState('')
@@ -94,14 +119,19 @@ export default function NewOrderPage() {
   const [selectedCity, setSelectedCity] = useState(CITIES[0])
   const [customerErrors, setCustomerErrors] = useState({})
 
-  const [catalogPlans, setCatalogPlans] = useState(() => fetchPlans({ activeOnly: true }))
+  useEffect(() => {
+    if (cities.length > 0 && !cities.some((city) => city.code === selectedCity.code)) {
+      setSelectedCity(cities[0])
+    }
+  }, [cities, selectedCity.code])
+
+  const [catalogPlans, setCatalogPlans] = useState([])
+  const { data: apiPlans } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchPlansApi() : Promise.resolve(fetchPlans({ activeOnly: true }))),
+    []
+  )
   const [selectedConnectionType, setSelectedConnectionType] = useState('BROADBAND')
-  const [selectedPlanId, setSelectedPlanId] = useState(() => {
-    const initialBroadband = fetchPlans({ activeOnly: true }).filter(
-      (p) => p.connectionType === 'BROADBAND'
-    )
-    return (initialBroadband.find((p) => p.recommended) || initialBroadband[0])?.id || ''
-  })
+  const [selectedPlanId, setSelectedPlanId] = useState('')
   const [includePoESwitch, setIncludePoESwitch] = useState(false)
   const [hasLandlineBundle, setHasLandlineBundle] = useState(false)
   const [landlineOption, setLandlineOption] = useState('NONE')
@@ -171,10 +201,14 @@ export default function NewOrderPage() {
   }, [])
 
   useEffect(() => {
+    if (REVIEW1_API_MODE) {
+      setCatalogPlans(apiPlans || [])
+      return undefined
+    }
     const refreshPlans = () => setCatalogPlans(fetchPlans({ activeOnly: true }))
     refreshPlans()
     return subscribePlansUpdated(refreshPlans)
-  }, [])
+  }, [apiPlans])
 
   const currentPlans = useMemo(() => {
     return catalogPlans.filter((p) => p.connectionType === selectedConnectionType)
@@ -292,7 +326,7 @@ export default function NewOrderPage() {
     setCustomerPhone(customer.phone || '')
     setInstallationAddress(customer.address || '')
     setRepresentativeName(customer.contactPerson || '')
-    const matchedCity = CITIES.find((c) => c.code === customer.branchCode)
+    const matchedCity = cities.find((c) => c.code === customer.branchCode)
     if (matchedCity) setSelectedCity(matchedCity)
   }
 
@@ -316,14 +350,14 @@ export default function NewOrderPage() {
     installationAddress,
   ])
 
-  const hasDocuments = Boolean(
+  const hasDocuments = REVIEW1_API_MODE || Boolean(
     nationalIdFile &&
     addressProofFile &&
     hasUploadedNationalId &&
     hasUploadedAddressProof
   )
   const hasPlanSelected = Boolean(selectedPlan)
-  const hasOdnCheck = Boolean(odnCheckResult?.checked)
+  const hasOdnCheck = REVIEW1_API_MODE || Boolean(odnCheckResult?.checked)
   const isDialupSelected = isDialupConnectionType(selectedConnectionType)
   const dialupLandlineValidation = useMemo(
     () =>
@@ -336,9 +370,9 @@ export default function NewOrderPage() {
     [selectedConnectionType, hasLandlineBundle, landlineOption, existingLandlineNumber]
   )
   const hasDialupLandlineRequirement = !isDialupSelected || dialupLandlineValidation.valid
-  const netDepositDue = Number(financialCalculations.netDepositAndAdvance || 0)
-  const isDepositWaived = netDepositDue <= 0
-  const hasDepositCollection = isDepositWaived || (Boolean(depositConfirmed) && Boolean(depositMethod))
+  const netDepositDue = REVIEW1_API_MODE ? 0 : Number(financialCalculations.netDepositAndAdvance || 0)
+  const isDepositWaived = REVIEW1_API_MODE || netDepositDue <= 0
+  const hasDepositCollection = REVIEW1_API_MODE || isDepositWaived || (Boolean(depositConfirmed) && Boolean(depositMethod))
 
   useEffect(() => {
     setDepositConfirmed(false)
@@ -703,7 +737,7 @@ export default function NewOrderPage() {
                 setRepresentativeName={setRepresentativeName}
                 selectedCity={selectedCity}
                 setSelectedCity={setSelectedCity}
-                cities={CITIES}
+                cities={cities}
                 errors={customerErrors}
               />
             )}

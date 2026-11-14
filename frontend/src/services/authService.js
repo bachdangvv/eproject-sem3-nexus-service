@@ -1,5 +1,12 @@
 import { fetchEmployees } from './adminUserService.js'
 import { fetchCustomers, resolveVerifiedCustomerAccount } from './customerService.js'
+import {
+  REVIEW1_API_MODE,
+  fetchSessionApi,
+  loginApi,
+  logoutApi,
+  toFrontendRole,
+} from './review1Api.js'
 
 export const DEMO_DEFAULT_PASSWORD = 'Nexus@2026'
 export const DEMO_TOKEN_PREFIX = 'demo-session-'
@@ -62,7 +69,44 @@ export function getCurrentUser() {
 }
 
 export function isAuthenticated() {
-  return Boolean(localStorage.getItem('nexus_token') && getCurrentUser())
+  return REVIEW1_API_MODE
+    ? Boolean(getCurrentUser())
+    : Boolean(localStorage.getItem('nexus_token') && getCurrentUser())
+}
+
+function persistServerSession(session) {
+  const role = toFrontendRole(session?.role)
+  if (!session?.username || !role) {
+    localStorage.removeItem('nexus_user')
+    localStorage.removeItem('nexus_token')
+    return null
+  }
+
+  const user = {
+    identifier: session.username,
+    username: session.username,
+    displayName: session.displayName || session.username,
+    role,
+    roleName: role === 'accounts' ? 'Accounts & Billing Officer' : ROLES_INFO[role]?.name || role,
+    dashboardRoute: getDefaultDashboardForRole(role),
+    authMode: 'SERVER_COOKIE_SESSION',
+    isRealAuth: true,
+    loggedInAt: new Date().toISOString(),
+  }
+  // This is only a UI cache. The server cookie remains the authority.
+  localStorage.setItem('nexus_user', JSON.stringify(user))
+  localStorage.removeItem('nexus_token')
+  return user
+}
+
+export async function hydrateServerSession() {
+  if (!REVIEW1_API_MODE) return getCurrentUser()
+  try {
+    const session = await fetchSessionApi()
+    return persistServerSession(session)
+  } catch {
+    return null
+  }
 }
 
 function persistDemoSession(sessionUser) {
@@ -138,6 +182,18 @@ export function enterDemoRole(role = 'customer', options = {}) {
 }
 
 export async function login(identifier, password, expectedRole = null) {
+  if (REVIEW1_API_MODE) {
+    const session = await loginApi(String(identifier || '').trim(), String(password || '').trim())
+    const user = persistServerSession(session)
+    const normalizedExpectedRole = expectedRole === 'accounts' ? 'accounts' : String(expectedRole || '').toLowerCase()
+    if (normalizedExpectedRole && normalizedExpectedRole !== user?.role) {
+      await logoutApi().catch(() => {})
+      persistServerSession({})
+      throw new Error(`Role mismatch: this account belongs to ${user?.roleName || user?.role}.`)
+    }
+    return user
+  }
+
   await new Promise((resolve) => setTimeout(resolve, 350))
 
   const cleanedIdent = String(identifier || '').trim()
@@ -252,6 +308,14 @@ export async function login(identifier, password, expectedRole = null) {
 }
 
 export function logout() {
+  if (REVIEW1_API_MODE) {
+    return logoutApi()
+      .catch(() => undefined)
+      .finally(() => {
+        localStorage.removeItem('nexus_user')
+        localStorage.removeItem('nexus_token')
+      })
+  }
   localStorage.removeItem('nexus_user')
   localStorage.removeItem('nexus_token')
 }

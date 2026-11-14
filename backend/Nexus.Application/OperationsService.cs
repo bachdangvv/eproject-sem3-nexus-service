@@ -2,9 +2,10 @@ using Nexus.Domain;
 
 namespace Nexus.Application;
 
-public sealed record CustomerView(int Id, string Code, string Name, string Phone, string Address, string CityCode);
+public sealed record CustomerView(int Id, string Code, string Name, string Phone, string Address, string CityCode,
+    string? TaxId, string? Email, string? ContactPerson, string? CustomerType, string Status);
 public sealed record RequestView(int Id, int CustomerId, string CustomerName, int PlanId, string PlanName,
-    string Type, string CityCode, string Address, bool HasNexusLandline, DateTime CreatedAt);
+    string Type, string CityCode, string Address, bool HasNexusLandline, decimal Price, DateTime CreatedAt);
 public sealed record OrderView(string Code, int RequestId, string Status, RequestView Request, DateTime CreatedAt,
     string? AccountId, DateTime? ActivatedAt);
 public sealed record OrderHistoryView(string Status, DateTime At, string Actor, string Note,
@@ -33,7 +34,9 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         var customer = new Customer
         {
             Name = name, SearchName = name.ToUpperInvariant(), Phone = input.Phone,
-            Address = input.Address.Trim(), CityCode = input.CityCode
+            Address = input.Address.Trim(), CityCode = input.CityCode,
+            TaxId = input.TaxId?.Trim(), Email = input.Email?.Trim(), ContactPerson = input.ContactPerson?.Trim(),
+            CustomerType = input.CustomerType?.Trim() ?? "Corporate", Status = input.Status?.Trim() ?? "ACTIVE"
         };
         operations.Add(customer);
         await operations.SaveChangesAsync();
@@ -49,6 +52,11 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         customer.Phone = input.Phone;
         customer.Address = input.Address.Trim();
         customer.CityCode = input.CityCode;
+        customer.TaxId = input.TaxId?.Trim();
+        customer.Email = input.Email?.Trim();
+        customer.ContactPerson = input.ContactPerson?.Trim();
+        customer.CustomerType = input.CustomerType?.Trim() ?? customer.CustomerType ?? "Corporate";
+        customer.Status = input.Status?.Trim() ?? customer.Status ?? "ACTIVE";
         await operations.SaveChangesAsync();
         return ToView(customer);
     }
@@ -174,11 +182,13 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
     }
 
     private static CustomerView ToView(Customer customer) =>
-        new(customer.Id, customer.Code, customer.Name, customer.Phone, customer.Address, customer.CityCode);
+        new(customer.Id, customer.Code, customer.Name, customer.Phone, customer.Address, customer.CityCode,
+            customer.TaxId, customer.Email, customer.ContactPerson, customer.CustomerType, customer.Status ?? "ACTIVE");
 
     private static RequestView ToView(ServiceRequest request) =>
         new(request.Id, request.CustomerId, request.Customer.Name, request.PlanId, request.PlanName,
-            request.Type, request.CityCode, request.Address, request.HasNexusLandline, AsUtc(request.CreatedAt));
+            request.Type, request.CityCode, request.Address, request.HasNexusLandline,
+            request.Plan.Price, AsUtc(request.CreatedAt));
 
     private static OrderView ToView(ServiceOrder order) =>
         new(order.Code, order.RequestId, order.Status.ToString(), ToView(order.Request), AsUtc(order.CreatedAt),

@@ -2,8 +2,9 @@ import { fetchMockTracking } from './mock/mockTrackingService.js'
 import { fetchApiTracking } from './api/trackingApi.js'
 import { ORDER_STATUS_LIST, ORDER_STATUS_MAP, normalizeOrderStatus } from '../utils/orderStatus.js'
 import { sanitizePublicTrackingPayload } from '../utils/publicTracking.js'
+import { REVIEW1_API_MODE } from './review1Api.js'
 
-const USE_MOCK = import.meta.env?.VITE_USE_MOCK !== 'false'
+const USE_MOCK = !REVIEW1_API_MODE
 
 export const ORDER_ID_REGEX = /^[DBT]\d{10}$/
 export const ACCOUNT_ID_REGEX = /^[DBT]\d{15}$/

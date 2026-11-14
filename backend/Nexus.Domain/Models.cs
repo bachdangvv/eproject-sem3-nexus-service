@@ -33,6 +33,11 @@ public sealed class Customer
     public required string Phone { get; set; }
     public required string Address { get; set; }
     public required string CityCode { get; set; }
+    public string? TaxId { get; set; }
+    public string? Email { get; set; }
+    public string? ContactPerson { get; set; }
+    public string? CustomerType { get; set; }
+    public string? Status { get; set; }
     public City City { get; set; } = null!;
 }
 

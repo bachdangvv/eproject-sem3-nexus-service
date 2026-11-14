@@ -38,6 +38,7 @@ public interface IOperationsStore
     Task<ServiceRequest?> FindRequestForConfirmationAsync(int id);
     Task<IReadOnlyList<ServiceOrder>> ListOrdersAsync(OrderNumber? number, OrderStatus? status);
     Task<ServiceOrder?> FindOrderAsync(OrderNumber number);
+    Task<ServiceOrder?> FindOrderByAccountIdAsync(string accountId);
     Task<ServiceOrder?> ReadOrderByRequestAsync(int requestId);
     Task<ServiceOrder?> ReadOrderByIdAsync(long orderId);
     Task<IReadOnlyList<OrderEvent>> ReadHistoryAsync(long orderId);

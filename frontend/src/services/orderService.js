@@ -7,6 +7,12 @@ import {
 } from '../utils/orderStatus.js'
 import { saveOrderDocuments, deleteOrderDocuments } from './documentStorageService.js'
 import { STATUTORY_TAX_RATE_PERCENT, calculateStatutoryTax } from './taxConfig.js'
+import {
+  REVIEW1_API_MODE,
+  fetchOrdersApi,
+  fetchOrderDetailApi,
+  createOrderApi,
+} from './review1Api.js'
 
 const ORDERS_STORAGE_KEY = 'nexus_orders'
 const LEGACY_RETAIL_STORAGE_KEY = 'nexus_retail_orders'
@@ -385,6 +391,10 @@ export const INITIAL_ORDERS = RAW_INITIAL_ORDERS.map((order, idx) => {
 })
 
 export function fetchOrders() {
+  if (REVIEW1_API_MODE) {
+    return fetchOrdersApi()
+  }
+
   try {
     const raw = localStorage.getItem(ORDERS_STORAGE_KEY)
     if (raw !== null) {
@@ -409,6 +419,7 @@ export function fetchOrders() {
 export function findOrderById(orderId) {
   const normalized = String(orderId || '').trim().toUpperCase()
   if (!normalized) return null
+  if (REVIEW1_API_MODE) return fetchOrderDetailApi(normalized)
   const orders = fetchOrders()
   return (
     orders.find((o) => String(o.id || o.orderId || '').trim().toUpperCase() === normalized) || null
@@ -642,6 +653,9 @@ export function getOrderDepositSummary(order) {
 
 export function getNextOrderId(servicePrefix = 'B') {
   const prefix = servicePrefix.charAt(0).toUpperCase()
+  if (REVIEW1_API_MODE) {
+    return `${prefix}0000000001`
+  }
   const seqKey = `${SEQUENCE_KEY_PREFIX}${prefix}`
 
   let maxSeq = 1089
@@ -933,6 +947,10 @@ export function commitOrder(orderPayload) {
 }
 
 export async function commitOrderWithDocuments(orderPayload) {
+  if (REVIEW1_API_MODE) {
+    return createOrderApi(orderPayload)
+  }
+
   const orders = fetchOrders()
   const { orderId } = resolveCommitOrderId(orderPayload, orders)
   const targetStatus = orderPayload.status || ORDER_STATUS.PENDING_SURVEY
@@ -1002,10 +1020,16 @@ function mutateOrder(orderId, buildUpdated, actionLabel = 'modified') {
 }
 
 export function updateOrder(orderId, updatedFields) {
+  if (REVIEW1_API_MODE) {
+    throw new Error('Editing orders is not part of the Review 1 backend contract yet.')
+  }
   return mutateOrder(orderId, () => updatedFields, 'edited')
 }
 
 export function cancelOrder(orderId, reason = 'Cancelled by store representative') {
+  if (REVIEW1_API_MODE) {
+    throw new Error('Cancelling orders is not part of the Review 1 backend contract yet.')
+  }
   return mutateOrder(
     orderId,
     () => ({
@@ -1018,6 +1042,9 @@ export function cancelOrder(orderId, reason = 'Cancelled by store representative
 }
 
 export function recordOrderDepositCollection(orderId, collectionInput = {}) {
+  if (REVIEW1_API_MODE) {
+    throw new Error('Deposit collection is not part of the Review 1 backend contract yet.')
+  }
   const orders = fetchOrders()
   const index = orders.findIndex((o) => o.id === orderId)
   if (index === -1) {
@@ -1073,6 +1100,9 @@ export function refundOrder(
   refundAmountUSD = null,
   refundMethod = 'Counter / Corporate Bank Refund'
 ) {
+  if (REVIEW1_API_MODE) {
+    throw new Error('Refunds are not part of the Review 1 backend contract yet.')
+  }
   return mutateOrder(
     orderId,
     (current) => {
