@@ -257,7 +257,7 @@ export default function AccountLifecyclePage() {
   }
 
   return (
-    <TechnicalLayout>
+    <TechnicalLayout activeNavId="lifecycle">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">

@@ -37,6 +37,7 @@ const ReviewRequestsPage = lazy(() => import('./pages/review/ReviewRequestsPage'
 const ReviewCustomersPage = lazy(() => import('./pages/review/ReviewCustomersPage'))
 const ReviewBillingPage = lazy(() => import('./pages/review/ReviewBillingPage'))
 const ReviewUsersPage = lazy(() => import('./pages/review/ReviewUsersPage'))
+const ReviewScopePage = lazy(() => import('./pages/review/ReviewScopePage'))
 
 function RouteSuspenseFallback() {
   return (
@@ -127,8 +128,8 @@ export default function App() {
         <Route
           path="/technical/lifecycle"
           element={
-            <ProtectedRoute allowedRoles={['technical', 'admin', 'accounts']}>
-              <AccountLifecyclePage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['technical'] : ['technical', 'admin', 'accounts']}>
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="lifecycle" /> : <AccountLifecyclePage />}
             </ProtectedRoute>
           }
         />
@@ -152,32 +153,32 @@ export default function App() {
         <Route
           path="/accounts/cdr"
           element={
-            <ProtectedRoute allowedRoles={['accounts', 'admin']}>
-              <CdrMeteringPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['accounts'] : ['accounts', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="cdr" /> : <CdrMeteringPage />}
             </ProtectedRoute>
           }
         />
         <Route
           path="/accounts/debts"
           element={
-            <ProtectedRoute allowedRoles={['accounts', 'admin']}>
-              <DebtManagementPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['accounts'] : ['accounts', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="debts" /> : <DebtManagementPage />}
             </ProtectedRoute>
           }
         />
         <Route
           path="/accounts/tax-reports"
           element={
-            <ProtectedRoute allowedRoles={['accounts', 'admin']}>
-              <TaxAuditReportsPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['accounts'] : ['accounts', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="tax-reports" /> : <TaxAuditReportsPage />}
             </ProtectedRoute>
           }
         />
         <Route
           path="/accounts/tariffs"
           element={
-            <ProtectedRoute allowedRoles={['accounts', 'admin']}>
-              <AccountsTariffsPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['accounts'] : ['accounts', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="tariffs" /> : <AccountsTariffsPage />}
             </ProtectedRoute>
           }
         />
@@ -202,7 +203,7 @@ export default function App() {
           path="/admin/vendors"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <VendorsShopsPage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="shops" /> : <VendorsShopsPage />}
             </ProtectedRoute>
           }
         />
@@ -210,7 +211,7 @@ export default function App() {
           path="/admin/shops"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <VendorsShopsPage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="shops" /> : <VendorsShopsPage />}
             </ProtectedRoute>
           }
         />
@@ -218,7 +219,7 @@ export default function App() {
           path="/admin/inventory"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <InventoryHardwarePage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="inventory" /> : <InventoryHardwarePage />}
             </ProtectedRoute>
           }
         />
@@ -226,7 +227,7 @@ export default function App() {
           path="/admin/hardware"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <InventoryHardwarePage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="inventory" /> : <InventoryHardwarePage />}
             </ProtectedRoute>
           }
         />
@@ -242,7 +243,7 @@ export default function App() {
           path="/admin/schemes"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminBulkSchemesPage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="schemes" /> : <AdminBulkSchemesPage />}
             </ProtectedRoute>
           }
         />
@@ -250,7 +251,7 @@ export default function App() {
           path="/admin/bulk-schemes"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminBulkSchemesPage />
+              {REVIEW1_API_MODE ? <ReviewScopePage scope="schemes" /> : <AdminBulkSchemesPage />}
             </ProtectedRoute>
           }
         />
