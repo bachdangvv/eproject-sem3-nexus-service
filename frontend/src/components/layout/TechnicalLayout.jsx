@@ -24,6 +24,7 @@ export const TECHNICAL_NAV_ITEMS = [
 
 export default function TechnicalLayout({
   activeNavId = 'surveys',
+  apiMode = false,
   toast = null,
   children,
 }) {
@@ -155,9 +156,9 @@ export default function TechnicalLayout({
           <div className="hidden md:flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-1.5 font-mono text-xs font-bold text-slate-700">
               <span className="h-2 w-2 rounded-full bg-sky-500" />
-              LOCAL-DEMO
+              {apiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
               <span className="text-[10px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                MOCK DATA
+                {apiMode ? 'API DATA' : 'MOCK DATA'}
               </span>
             </span>
           </div>

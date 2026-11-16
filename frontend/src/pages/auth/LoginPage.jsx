@@ -49,6 +49,7 @@ const DEMO_CUSTOMER_SAMPLES = [
   { customerId: 'CUS-004', label: 'CUS-004 • PharmaCare' },
   { customerId: 'CUS-006', label: 'CUS-006 • FastCall' },
 ]
+const LOGIN_DEMO_PASSWORD = REVIEW1_API_MODE ? 'Nexus-Demo-2026!' : DEMO_DEFAULT_PASSWORD
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -81,8 +82,10 @@ export default function LoginPage() {
 
   function handleQuickRoleSelect(r) {
     setRole(r.id)
-    setIdentifier(ROLES_INFO[r.id]?.defaultIdentifier || r.placeholder)
-    setPassword(DEMO_DEFAULT_PASSWORD)
+    setIdentifier(REVIEW1_API_MODE
+      ? `${r.id === 'accounts' ? 'billing' : r.id}.demo`
+      : ROLES_INFO[r.id]?.defaultIdentifier || r.placeholder)
+    setPassword(LOGIN_DEMO_PASSWORD)
     setError('')
   }
 
@@ -211,7 +214,7 @@ export default function LoginPage() {
                 >
                   <KeyRound size={13} /> {REVIEW1_API_MODE ? 'Backend Auth' : 'Mock Auth &amp; Role Switcher'}
                 </button>
-                <button
+                {!REVIEW1_API_MODE && <button
                   type="button"
                   onClick={() => { setTab('register'); setError('') }}
                   className={`min-h-[38px] rounded-xl px-5 py-2 transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -221,7 +224,7 @@ export default function LoginPage() {
                   }`}
                 >
                   <Router size={13} /> New Subscriber Registration
-                </button>
+                </button>}
               </div>
             </div>
 
@@ -232,7 +235,7 @@ export default function LoginPage() {
                   <div>
                     <span className="font-bold">{REVIEW1_API_MODE ? 'Review 1 API:' : 'Demo Mode Disclaimer:'}</span>{' '}
                     {REVIEW1_API_MODE
-                      ? `Backend session login is active. Use a seeded employee account and the configured demo password (${DEMO_DEFAULT_PASSWORD}).`
+                      ? `Select a role to fill its local demo credentials (${LOGIN_DEMO_PASSWORD}), or enter your assigned credentials.`
                       : <>Quick role buttons switch personas locally for UI walkthroughs (not real security). Below, Mock Directory Login only accepts registered staff emails/IDs or verified customer IDs (<span className="font-mono font-semibold">CUS-xxx</span>, Tax ID, Account ID, Order ID, or customer email; default password <span className="font-mono font-semibold">{DEMO_DEFAULT_PASSWORD}</span>) and blocks role escalation.</>}
                   </div>
                 </div>
@@ -240,7 +243,7 @@ export default function LoginPage() {
                 <div className="mt-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                      Step 1: Select Role or Launch Demo Preview
+                      {REVIEW1_API_MODE ? 'Select employee role' : 'Step 1: Select Role or Launch Demo Preview'}
                     </label>
                     {!REVIEW1_API_MODE && <button
                       type="button"
@@ -296,7 +299,7 @@ export default function LoginPage() {
                   <div>
                     <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                       <label htmlFor="identifier">
-                        {role === 'customer'
+                        {REVIEW1_API_MODE ? 'Username' : role === 'customer'
                           ? 'Verified Customer ID / Account ID / Tax ID / Email'
                           : 'Registered Staff Email or Employee ID'}
                       </label>
@@ -312,7 +315,7 @@ export default function LoginPage() {
                         autoComplete="username"
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder={activeRole ? activeRole.placeholder : 'admin@nexus.vn'}
+                        placeholder={REVIEW1_API_MODE ? 'e.g. retail.demo' : activeRole?.placeholder || 'admin@nexus.vn'}
                         className="min-w-0 flex-1 bg-transparent text-xs font-mono outline-none text-slate-800 placeholder:text-slate-400"
                       />
                     </div>
@@ -320,9 +323,9 @@ export default function LoginPage() {
 
                   <div>
                     <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                      <label htmlFor="password">Demo Directory Password</label>
+                      <label htmlFor="password">{REVIEW1_API_MODE ? 'Password' : 'Demo Directory Password'}</label>
                       <span className="text-[10px] font-mono text-slate-400">
-                        Default: {DEMO_DEFAULT_PASSWORD}
+                        Demo: {LOGIN_DEMO_PASSWORD}
                       </span>
                     </div>
                     <div className="mt-1.5 flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 focus-within:border-brand-soft focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
@@ -333,7 +336,7 @@ export default function LoginPage() {
                         autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder={`Enter ${DEMO_DEFAULT_PASSWORD} or Admin temp password`}
+                        placeholder={REVIEW1_API_MODE ? 'Enter password' : `Enter ${DEMO_DEFAULT_PASSWORD} or Admin temp password`}
                         className="min-w-0 flex-1 bg-transparent text-xs outline-none text-slate-800 placeholder:text-slate-400"
                       />
                       <button
@@ -348,7 +351,7 @@ export default function LoginPage() {
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600">
+                    {!REVIEW1_API_MODE && <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600">
                       <input
                         type="checkbox"
                         checked={remember}
@@ -356,7 +359,7 @@ export default function LoginPage() {
                         className="rounded border-slate-300 text-brand-soft focus:ring-brand-soft cursor-pointer"
                       />
                       {REVIEW1_API_MODE ? 'Keep signed-in user cache locally' : 'Keep demo session in localStorage'}
-                    </label>
+                    </label>}
                     <Link
                       to="/coming-soon?topic=password-recovery"
                       className="font-semibold text-brand-soft hover:underline cursor-pointer"
@@ -504,7 +507,7 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {!REVIEW1_API_MODE && <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="flex items-center gap-3 rounded-xl bg-slate-50/80 p-3 border border-slate-100">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-brand-accent">
                   <Info size={16} />
@@ -534,7 +537,7 @@ export default function LoginPage() {
                   <div className="text-slate-400">Support Contact Reference</div>
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </main>

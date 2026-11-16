@@ -1,6 +1,6 @@
 # Nexus Service Marketing System
 
-Backend Review 1 xử lý luồng Retail lập đơn và Technical đánh giá khả thi, cấp kết nối, sinh Account ID. Frontend React + Vite do thành viên phụ trách triển khai trong [frontend](frontend/README.md).
+Review 1 dùng React + Vite và API ASP.NET Core để xử lý Customer, Request, Order, đánh giá, Connection, Account ID, Billing, thanh toán thủ công và Feedback.
 
 ## Cấu trúc dự án
 
@@ -32,7 +32,7 @@ Dùng `GET http://127.0.0.1:5168/api/session` để kiểm tra API. Với cờ `
 | `retail.demo` | Retail | Tạo khách hàng và yêu cầu, xác nhận đơn, tra cứu và ghi nhận phản hồi |
 | `technical.demo` | Technical | Xử lý hàng chờ, ghi kết quả khả thi và cấp kết nối |
 | `admin.demo` | Admin | Quản lý gói dịch vụ, thiết bị, nhân viên và mã thành phố |
-| `billing.demo` | Billing | Kiểm tra đăng nhập và phân quyền cho vai trò kế toán |
+| `billing.demo` | Billing | Tra cứu Account ID, lập billing record và ghi nhận thanh toán |
 
 Tắt máy chủ trước khi chạy `.\backend\scripts\reset-demo.ps1` để xóa database demo mặc định. Khởi động lại để tạo database sạch và sinh mã mẫu từ 1.
 
@@ -45,7 +45,7 @@ dotnet build backend/Nexus.slnx
 .\backend\scripts\smoke.ps1
 ```
 
-- [Kịch bản Review 1 và ảnh minh họa từ prototype](docs/review-1.md)
+- [Kịch bản Review 1 theo từng vai trò](docs/review-1.md)
 - [ERD và quy tắc vòng đời đơn](docs/erd.md)
 - [API contract](docs/api.md)
 

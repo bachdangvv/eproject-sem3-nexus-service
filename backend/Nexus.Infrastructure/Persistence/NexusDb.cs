@@ -15,6 +15,7 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
     public DbSet<ServiceOrder> Orders => Set<ServiceOrder>();
     public DbSet<OrderEvent> OrderEvents => Set<OrderEvent>();
     public DbSet<Connection> Connections => Set<Connection>();
+    public DbSet<BillingRecord> BillingRecords => Set<BillingRecord>();
     public DbSet<ServiceFeedback> Feedback => Set<ServiceFeedback>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -46,6 +47,16 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
             table.HasCheckConstraint("CK_Orders_Serial", "Id >= 1 AND Id <= 9999999999"));
         model.Entity<Connection>().ToTable(table =>
             table.HasCheckConstraint("CK_Connections_Serial", "Id >= 1 AND Id <= 999999999999"));
+        model.Entity<BillingRecord>(bill =>
+        {
+            bill.HasKey(entry => entry.ConnectionId);
+            bill.Property(entry => entry.Amount).HasPrecision(12, 2);
+            bill.Property(entry => entry.PaidAt).IsConcurrencyToken();
+            bill.HasOne<Connection>().WithOne().HasForeignKey<BillingRecord>(entry => entry.ConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            bill.HasOne<Employee>().WithMany().HasForeignKey(entry => entry.PaidById)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<ServiceFeedback>().HasOne(entry => entry.RecordedBy).WithMany()
             .OnDelete(DeleteBehavior.Restrict);
         model.Entity<ServiceFeedback>().ToTable(table =>

@@ -22,6 +22,29 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
+                {
+                    b.Property<long>("ConnectionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PaidById")
+                        .HasColumnType("int");
+
+                    b.HasKey("ConnectionId");
+
+                    b.HasIndex("PaidById");
+
+                    b.ToTable("BillingRecords");
+                });
+
             modelBuilder.Entity("Nexus.Domain.City", b =>
                 {
                     b.Property<string>("Code")
@@ -397,6 +420,20 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.HasIndex("PlanId");
 
                     b.ToTable("Requests");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
+                {
+                    b.HasOne("Nexus.Domain.Connection", null)
+                        .WithOne()
+                        .HasForeignKey("Nexus.Domain.BillingRecord", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("PaidById")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Nexus.Domain.Connection", b =>

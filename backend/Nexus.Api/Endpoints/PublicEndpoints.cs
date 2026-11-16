@@ -18,11 +18,9 @@ public static class PublicEndpoints
             {
                 type = "order",
                 id = order.Code,
-                serviceType = order.Request.Type,
+                serviceType = ServiceType(order.Request.Type),
                 status = order.Status.ToString(),
                 cityCode = order.Request.CityCode,
-                route = order.Request.Address,
-                customerName = order.Request.Customer.Name,
                 accountId = order.Connection?.AccountId,
                 orderId = order.Code
             });
@@ -38,13 +36,18 @@ public static class PublicEndpoints
                 type = "account",
                 id = order.Connection!.AccountId,
                 orderId = order.Code,
-                serviceType = order.Request.Type,
+                serviceType = ServiceType(order.Request.Type),
                 status = order.Status == Nexus.Domain.OrderStatus.Connected ? "ACTIVE" : order.Status.ToString(),
                 cityCode = order.Request.CityCode,
-                route = order.Request.Address,
-                customerName = order.Request.Customer.Name,
                 accountId = order.Connection.AccountId
             });
         });
     }
+
+    private static string ServiceType(string type) => type switch
+    {
+        "D" => "DIAL_UP",
+        "T" => "LANDLINE",
+        _ => "BROADBAND"
+    };
 }

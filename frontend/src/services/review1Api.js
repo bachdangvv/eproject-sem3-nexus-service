@@ -332,6 +332,42 @@ export async function recordFeedbackApi(code, payload) {
   return data
 }
 
+export async function fetchRequestsApi() {
+  return (await apiClient.get('/requests')).data
+}
+
+export async function createRequestApi(payload) {
+  return (await apiClient.post('/requests', payload)).data
+}
+
+export async function confirmRequestApi(id) {
+  return mapOrderFromApi((await apiClient.post(`/requests/${id}/confirm`)).data)
+}
+
+export async function fetchProductsApi() {
+  return (await apiClient.get('/products')).data
+}
+
+export async function saveProductApi(id, payload) {
+  const response = id
+    ? await apiClient.put(`/products/${id}`, payload)
+    : await apiClient.post('/products', payload)
+  return response.data
+}
+
+export async function archiveProductApi(id) {
+  await apiClient.delete(`/products/${id}`)
+}
+
+export async function fetchBillingApi(accountId) {
+  return (await apiClient.get(`/billing/accounts/${encodeURIComponent(accountId)}`)).data
+}
+
+export async function saveBillingApi(accountId, payment = false) {
+  const path = `/billing/accounts/${encodeURIComponent(accountId)}`
+  return (await apiClient.post(payment ? `${path}/payment` : path)).data
+}
+
 export async function fetchPublicTrackingApi(type, id) {
   const endpoint = type === 'order'
     ? `/public/track/order/${encodeURIComponent(id)}`

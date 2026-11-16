@@ -2,8 +2,21 @@ import { Scale, ChevronRight } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
 import TariffTable from '../../components/tariffs/TariffTable'
 import { STATUTORY_TAX_RATE_PERCENT } from '../../services/taxConfig'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
+import ReviewPanel from '../review/ReviewPanel'
+import ReviewCatalog from '../review/ReviewCatalog'
 
 export default function PlansManagementPage() {
+  if (REVIEW1_API_MODE) {
+    return (
+      <AdminLayout activeNavId="plans" apiMode>
+        <ReviewPanel title="Plans & products">
+          <ReviewCatalog plans />
+          <ReviewCatalog />
+        </ReviewPanel>
+      </AdminLayout>
+    )
+  }
   return (
     <AdminLayout activeNavId="plans">
       <div className="card p-5 md:p-6 shadow-sm">

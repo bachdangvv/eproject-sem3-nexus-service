@@ -10,6 +10,8 @@ erDiagram
     SERVICE_ORDER ||--o{ ORDER_EVENT : tracks
     EMPLOYEE ||--o{ ORDER_EVENT : acts
     SERVICE_ORDER ||--o| CONNECTION : activates
+    CONNECTION ||--o| BILLING_RECORD : billed
+    EMPLOYEE o|--o{ BILLING_RECORD : records_payment
     SERVICE_ORDER ||--o{ SERVICE_FEEDBACK : receives
     EMPLOYEE ||--o{ SERVICE_FEEDBACK : records
 
@@ -24,6 +26,11 @@ erDiagram
         string SearchName
         string Phone
         string Address
+        string TaxId
+        string Email
+        string ContactPerson
+        string CustomerType
+        string Status
     }
     EMPLOYEE {
         int Id PK
@@ -79,6 +86,12 @@ erDiagram
         string Type
         string CityCode
         datetime ActivatedAt
+    }
+    BILLING_RECORD {
+        long ConnectionId PK,FK
+        decimal Amount
+        datetime PaidAt
+        int PaidById FK
     }
     SERVICE_FEEDBACK {
         long Id PK

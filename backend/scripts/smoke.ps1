@@ -38,10 +38,10 @@ function Call($client, [string]$path, [string]$method = 'GET', $body = $null, [i
     if ($content) { return ConvertFrom-Json -InputObject $content }
 }
 
-function SignIn([string]$role) {
+function SignIn([string]$role, [string]$username = "$($role.ToLowerInvariant()).demo", [string]$password = 'Nexus-Demo-2026!') {
     $client = @{ Cookies = [Microsoft.PowerShell.Commands.WebRequestSession]::new(); Token = $null }
     $client.Token = (Call $client '/session').csrfToken
-    Call $client '/login' 'POST' @{username="$($role.ToLowerInvariant()).demo";password='Nexus-Demo-2026!'} 204
+    Call $client '/login' 'POST' @{username=$username;password=$password} 204
     $session = Call $client '/session'
     Check ($session.role -eq $role) "login $role"
     $client.Token = $session.csrfToken
@@ -77,6 +77,9 @@ try {
     Check (@(Call $admin '/employees').Count -eq 4) 'admin employee list'
     $createdEmployee = Call $admin '/employees' 'POST' @{username='retail.extra';displayName='Retail Extra';role='Retail';password='Nexus-New-2026!'} 201
     Check ($createdEmployee.role -eq 'Retail' -and !$createdEmployee.passwordHash) 'admin employee creation'
+    $createdSession = SignIn 'Retail' 'retail.extra' 'Nexus-New-2026!'
+    $null = Call $createdSession '/logout' 'POST' $null 204
+    $null = Call $createdSession '/orders' 'GET' $null 401
     $null = Call $retail '/employees' 'GET' $null 403
     $null = Call $billing '/orders' 'GET' $null 403
     $null = Call $technical '/requests' 'POST' @{customerId=1;planId=1;hasNexusLandline=$false} 403
@@ -137,8 +140,24 @@ try {
     $publicAccount = Call $public "/public/track/account/$($connected.accountId)"
     Check ($publicOrder.id -eq $order.code -and $publicOrder.accountId -eq $connected.accountId -and
         $publicAccount.id -eq $connected.accountId -and $publicAccount.orderId -eq $order.code) 'public order and account tracking'
+    Check (!$publicOrder.customerName -and !$publicOrder.route -and !$publicAccount.customerName -and !$publicAccount.route) 'public tracking omits subscriber name and address'
     $null = Call $retail "$route/feedback" 'POST' @{rating=5;comment='Kết nối hoạt động ổn định.'} 201
     Check ((Call $retail $route).feedback[0].rating -eq 5) 'feedback saved on the connected order'
+
+    $billingRoute = "/billing/accounts/$($connected.accountId)"
+    $null = Call $retail $billingRoute 'GET' $null 403
+    $null = Call $billing '/billing/accounts/B101999999999999' 'GET' $null 404
+    $lookup = Call $billing $billingRoute
+    Check ($lookup.status -eq 'NotBilled' -and $lookup.orderId -eq $order.code) 'Billing resolves the same connected Account ID'
+    $null = Call $billing "$billingRoute/payment" 'POST' $null 409
+    $bill = Call $billing $billingRoute 'POST'
+    Check ($bill.amount -eq $bb.price -and $bill.status -eq 'Unpaid') 'billing record uses the selected plan amount'
+    $paid = Call $billing "$billingRoute/payment" 'POST'
+    $paidAgain = Call $billing "$billingRoute/payment" 'POST'
+    $billAgain = Call $billing $billingRoute 'POST'
+    $stored = Call $billing $billingRoute
+    Check ($paid.status -eq 'Paid' -and $paid.paidAt -and $paidAgain.paidAt -eq $paid.paidAt -and
+        $billAgain.paidAt -eq $paid.paidAt -and $stored.paidAt -eq $paid.paidAt) 'payment persists and create/payment retries preserve the original record'
 
     $dialRequest = Call $retail '/requests' 'POST' @{customerId=$customer.id;planId=$dial.id;hasNexusLandline=$false} 201
     $dialOrder = Call $retail "/requests/$($dialRequest.id)/confirm" 'POST' $null 201

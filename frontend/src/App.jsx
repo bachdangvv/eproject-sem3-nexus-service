@@ -11,6 +11,7 @@ import PromoSurveyBar from './components/landing/PromoSurveyBar'
 import LoginPage from './pages/auth/LoginPage'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import BackgroundAtmosphere from './components/common/BackgroundAtmosphere'
+import { REVIEW1_API_MODE } from './services/review1Api'
 
 const NewOrderPage = lazy(() => import('./pages/retail/NewOrderPage'))
 const OrdersListPage = lazy(() => import('./pages/retail/OrdersListPage'))
@@ -31,6 +32,11 @@ const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
 const CustomerPortalPage = lazy(() => import('./pages/customer/CustomerPortalPage'))
 const ComingSoonPage = lazy(() => import('./pages/common/ComingSoonPage'))
 const NotFoundPage = lazy(() => import('./pages/common/NotFoundPage'))
+const ReviewOrdersPage = lazy(() => import('./pages/review/ReviewOrdersPage'))
+const ReviewRequestsPage = lazy(() => import('./pages/review/ReviewRequestsPage'))
+const ReviewCustomersPage = lazy(() => import('./pages/review/ReviewCustomersPage'))
+const ReviewBillingPage = lazy(() => import('./pages/review/ReviewBillingPage'))
+const ReviewUsersPage = lazy(() => import('./pages/review/ReviewUsersPage'))
 
 function RouteSuspenseFallback() {
   return (
@@ -83,33 +89,38 @@ export default function App() {
         <Route
           path="/retail/orders"
           element={
-            <ProtectedRoute allowedRoles={['retail', 'admin']}>
-              <OrdersListPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['retail'] : ['retail', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewOrdersPage key="retail" /> : <OrdersListPage />}
             </ProtectedRoute>
           }
         />
         <Route
           path="/retail/orders/new"
           element={
-            <ProtectedRoute allowedRoles={['retail', 'admin']}>
-              <NewOrderPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['retail'] : ['retail', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewRequestsPage /> : <NewOrderPage />}
             </ProtectedRoute>
           }
         />
+        {REVIEW1_API_MODE && (
+          <Route path="/retail/customers" element={
+            <ProtectedRoute allowedRoles={['retail']}><ReviewCustomersPage /></ProtectedRoute>
+          } />
+        )}
 
         <Route
           path="/technical/surveys"
           element={
-            <ProtectedRoute allowedRoles={['technical', 'admin']}>
-              <TechnicalSurveyPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['technical'] : ['technical', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewOrdersPage key="survey" mode="survey" /> : <TechnicalSurveyPage />}
             </ProtectedRoute>
           }
         />
         <Route
           path="/technical/activations"
           element={
-            <ProtectedRoute allowedRoles={['technical', 'admin']}>
-              <TechnicalActivationPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['technical'] : ['technical', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewOrdersPage key="activation" mode="activation" /> : <TechnicalActivationPage />}
             </ProtectedRoute>
           }
         />
@@ -124,8 +135,8 @@ export default function App() {
         <Route
           path="/technical/activations/:orderId"
           element={
-            <ProtectedRoute allowedRoles={['technical', 'admin']}>
-              <TechnicalActivationPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['technical'] : ['technical', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewOrdersPage key="activation" mode="activation" /> : <TechnicalActivationPage />}
             </ProtectedRoute>
           }
         />
@@ -133,8 +144,8 @@ export default function App() {
         <Route
           path="/accounts/billing"
           element={
-            <ProtectedRoute allowedRoles={['accounts', 'admin']}>
-              <BillingInvoicingPage />
+            <ProtectedRoute allowedRoles={REVIEW1_API_MODE ? ['accounts'] : ['accounts', 'admin']}>
+              {REVIEW1_API_MODE ? <ReviewBillingPage /> : <BillingInvoicingPage />}
             </ProtectedRoute>
           }
         />
@@ -175,7 +186,7 @@ export default function App() {
           path="/admin/customers"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminCustomersPage />
+              {REVIEW1_API_MODE ? <ReviewCustomersPage admin /> : <AdminCustomersPage />}
             </ProtectedRoute>
           }
         />
@@ -223,7 +234,7 @@ export default function App() {
           path="/admin/users"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminUsersPage />
+              {REVIEW1_API_MODE ? <ReviewUsersPage /> : <AdminUsersPage />}
             </ProtectedRoute>
           }
         />

@@ -4,7 +4,7 @@ using Nexus.Domain;
 
 namespace Nexus.Infrastructure.Persistence;
 
-public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore
+public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore, IBillingStore
 {
     public Task<Employee?> FindEmployeeAsync(string username) =>
         db.Employees.AsNoTracking().SingleOrDefaultAsync(employee => employee.Username == username);
@@ -67,7 +67,7 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     public Task<ServiceOrder?> FindOrderByAccountIdAsync(string accountId)
     {
         var value = accountId.Trim().ToUpperInvariant();
-        if (value.Length != 16 || value[0] is not ('D' or 'B' or 'T') ||
+        if (value.Length != 16 || value[0] is not ('D' or 'B' or 'T') || value.Skip(1).Any(c => !char.IsAsciiDigit(c)) ||
             !int.TryParse(value.AsSpan(1, 3), out var cityCode) ||
             !long.TryParse(value.AsSpan(4), out var connectionId))
             return Task.FromResult<ServiceOrder?>(null);
@@ -103,6 +103,12 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     public void Add(ServiceRequest request) => db.Requests.Add(request);
     public void Add(ServiceOrder order) => db.Orders.Add(order);
     public void Add(ServiceFeedback feedback) => db.Feedback.Add(feedback);
+    public void Add(BillingRecord bill) => db.BillingRecords.Add(bill);
+
+    public Task<BillingRecord?> FindBillAsync(long connectionId) => db.BillingRecords.FindAsync(connectionId).AsTask();
+
+    public Task<BillingRecord?> ReadBillAsync(long connectionId) =>
+        db.BillingRecords.AsNoTracking().SingleOrDefaultAsync(bill => bill.ConnectionId == connectionId);
 
     public async Task SaveChangesAsync()
     {

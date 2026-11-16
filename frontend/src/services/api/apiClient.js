@@ -31,6 +31,11 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('nexus_token')
       localStorage.removeItem('nexus_user')
     }
+    const problem = error.response?.data
+    const validationMessage = Object.values(problem?.errors || {}).flat().join(' ')
+    if (problem?.detail || validationMessage) {
+      error.message = problem.detail || validationMessage
+    }
     return Promise.reject(error)
   }
 )

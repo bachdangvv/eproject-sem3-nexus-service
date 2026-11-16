@@ -174,6 +174,14 @@ public sealed class Connection
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public sealed class BillingRecord
+{
+    public long ConnectionId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public int? PaidById { get; set; }
+}
+
 public sealed class ServiceFeedback
 {
     public long Id { get; set; }

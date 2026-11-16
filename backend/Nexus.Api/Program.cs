@@ -34,6 +34,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<StaffService>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<OperationsService>();
+builder.Services.AddScoped<BillingService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -91,5 +92,6 @@ api.MapGet("/session", (HttpContext context, IAntiforgery tokens) =>
 api.MapStaff();
 api.MapCatalog();
 api.MapOperations();
+api.MapBilling();
 api.MapPublic();
 app.Run();

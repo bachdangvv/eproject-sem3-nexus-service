@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { trackById, getStatusLabel } from '../../services/trackingService'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 const SAMPLES = [
   { label: 'Sample Dial-Up Order', id: 'D0000000001' },
@@ -121,7 +122,7 @@ export default function TrackingWidget() {
           </button>
         </form>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+        {!REVIEW1_API_MODE && <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
           <span className="text-[11px] font-semibold text-slate-400">Quick samples:</span>
           {SAMPLES.map((s) => (
             <button
@@ -133,7 +134,7 @@ export default function TrackingWidget() {
               {s.label}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
       <div className="mt-5 min-h-[72px]" aria-live="polite">

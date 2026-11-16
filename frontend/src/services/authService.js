@@ -183,7 +183,7 @@ export function enterDemoRole(role = 'customer', options = {}) {
 
 export async function login(identifier, password, expectedRole = null) {
   if (REVIEW1_API_MODE) {
-    const session = await loginApi(String(identifier || '').trim(), String(password || '').trim())
+    const session = await loginApi(String(identifier || '').trim(), String(password || ''))
     const user = persistServerSession(session)
     const normalizedExpectedRole = expectedRole === 'accounts' ? 'accounts' : String(expectedRole || '').toLowerCase()
     if (normalizedExpectedRole && normalizedExpectedRole !== user?.role) {
@@ -310,8 +310,7 @@ export async function login(identifier, password, expectedRole = null) {
 export function logout() {
   if (REVIEW1_API_MODE) {
     return logoutApi()
-      .catch(() => undefined)
-      .finally(() => {
+      .then(() => {
         localStorage.removeItem('nexus_user')
         localStorage.removeItem('nexus_token')
       })

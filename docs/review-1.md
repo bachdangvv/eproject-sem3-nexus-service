@@ -1,52 +1,40 @@
 # Kịch bản Review 1 Nexus
 
-Ngày review theo bảng nhóm là **16/11/2026**. Luồng demo 5–7 phút đi từ đăng nhập Retail, ghi yêu cầu, xác nhận đơn đến đăng nhập Technical, đánh giá và sinh Account ID. Hóa đơn, thanh toán, mua hàng vendor, upload hồ sơ và cổng tự phục vụ dành cho khách hàng thuộc các giai đoạn sau.
+Dùng API mode mặc định. Chạy FE và BE theo [README](../README.md), rồi mở [trang đăng nhập](http://localhost:5173/login). Cả bốn tài khoản seed dùng mật khẩu demo cục bộ `Nexus-Demo-2026!`. Nút **Sign out** giúp đổi vai trò giữa các bước.
 
-Các bước trên giao diện và ảnh dưới đây ghi lại prototype đã chạy ngày 11/11/2026. Bản hiện tại cung cấp [API](api.md) để thành viên phụ trách triển khai các màn hình tương ứng bằng React và Vite. Có thể chạy smoke test backend theo [README](../README.md) trong thời gian tích hợp giao diện.
+## Chuẩn bị
 
-## Dữ liệu và trình tự
+- Dùng database demo sạch hoặc cấu hình `ConnectionStrings__Demo` trỏ tới một file SQLite mới dành riêng cho rehearsal. API tự chạy migration và seed khi khởi động.
+- Gói seed cho luồng chính là **BB Basic**, giá **225 USD**. Khách mẫu mới dùng tên **Nguyễn Văn A**, điện thoại **0900000001**, địa chỉ **10 Nexus Street**, City **101**, email **review1@example.vn**.
+- Chạy `npm test --prefix frontend`, `npm run build --prefix frontend`, `dotnet build backend/Nexus.slnx` và `./backend/scripts/smoke.ps1` bằng PowerShell 7. Smoke test dùng SQLite riêng.
 
-Dùng database vừa reset theo [README](../README.md). Đăng nhập bằng `retail.demo` hoặc `technical.demo`, dùng mật khẩu demo trong README.
+## Luồng trình bày 6–8 phút
 
-| Bước | Thao tác | Kết quả cần thấy |
+| Người trình bày | Vai trò và thao tác | Kết quả cần thấy |
 | --- | --- | --- |
-| 1 | Đăng nhập Retail. Thêm Nguyễn Văn A, số `0900000001`, địa chỉ `10 Nexus Street`, City `101`. | Màn Retail hiện khách hàng `CUS-000002`. |
-| 2 | Chọn **Tạo yêu cầu**, gói **BB Basic** và **Lưu yêu cầu**. | Yêu cầu #1 xuất hiện trong hàng chờ. |
-| 3 | Chọn **Xác nhận thành đơn**. | Đơn `B0000000001` ở `Pending`. |
-| 4 | Đăng xuất và vào Technical. | Hàng chờ `Pending` hiển thị đơn vừa tạo. |
-| 5 | Mở đơn, chọn **Đạt** cho khoảng cách và máy chủ, lưu đánh giá. | Đơn chuyển sang `Feasible` và có mục lịch sử tương ứng. |
-| 6 | Chọn **Tạo kết nối**. | Đơn chuyển sang `Connected`, Account ID là `B101000000000001`. |
-| 7 | Nếu còn thời gian, quay lại Retail, tra cứu bằng Order ID. | Có Account ID và lịch sử `Pending → Feasible → Connected`. |
+| Minh | **Admin** (`admin.demo`). Mở **Plans & Tariffs**, chỉ gói BB Basic rồi thêm sản phẩm `Review 1 Router`. Trong **Access Control & RBAC**, tạo một tài khoản Retail nếu cần trình bày T15. | Gói ở trạng thái active. Sản phẩm hiện trong catalog. Admin thấy username và role vừa tạo. |
+| Bách | **Retail** (`retail.demo`). Mở **Customers → New customer**, nhập dữ liệu mẫu. Sau khi lưu, dùng **Find customer** với mã vừa cấp. | Khách có mã `CUS-000002` trên DB sạch. Địa chỉ và số điện thoại đọc lại đúng. |
+| Bách | Mở **Create New Subscription**, chọn khách và **BB Basic**, bấm **Save request** rồi **Confirm request** trong hàng chờ. | Có Request trước khi có Order. Sau khi confirm, chép Order ID `B0000000001` và thấy trạng thái **Pending**. |
+| Nhật | **Technical** (`technical.demo`). Mở **ODN Feasibility Surveys**, chọn Order ID vừa tạo, giữ **Distance within limit** và **Server available**, bấm **Save assessment**. Mở **Circuit Activation & Commissioning**, chọn lại đơn và bấm **Create connection**. | Lịch sử **Pending → Feasible → Connected**. Chép Account ID `B101000000000001`. |
+| Nhật | **Billing** (`billing.demo`). Dán Account ID tại **Billing & payment → Find account**. Bấm **Create billing record → Record full manual payment**. Tải lại và tìm lại Account ID. | Đúng Order ID, khách và giá **225.00 USD**. Trạng thái **Not billed → Unpaid → Paid**, có thời điểm thanh toán. |
+| Bách | Vào lại **Retail → Orders**, tìm đúng Order ID. Gửi **Feedback** 5/5 với nội dung `Kết nối hoạt động ổn định`. Tải lại chi tiết đơn. | Phản hồi vẫn có trong Order đã Connected. |
+| Cả nhóm | Mở **Tracking** trên trang chủ và lần lượt nhập Order ID, Account ID. | Tra được cả hai mã và trạng thái kết nối. Tên và địa chỉ khách không xuất hiện trên tracking công khai. |
 
-Để trình bày nhánh từ chối, tạo thêm một yêu cầu Dial-up với khách chưa có điện thoại Nexus. Tại Technical chọn đường dây **Không đạt** và ghi lý do. Đơn chuyển sang `Not Feasible`, nút cấp kết nối không xuất hiện.
+Mã trên là ví dụ khi đây là Order và Connection đầu tiên. Khi rehearsal trên database đã dùng, sao chép mã hệ thống vừa trả về.
 
-## Phân công theo tab Demo Flow
+## Nhánh kiểm thử và đóng review
 
-Bách trình bày đăng nhập Retail. Minh trình bày tạo khách hàng, Request, xác nhận Order và Order ID. Nhật trình bày hàng chờ, đánh giá, cấp Connection và Account ID. Ba bạn cùng phụ trách reset dữ liệu và chạy rehearsal.
+- Tạo Request **Dial-up 10h** cho khách chưa có Nexus landline. Technical bỏ chọn **Landline feasible**, nhập lý do rồi lưu. Xác nhận trạng thái **Not feasible**, lý do còn trong lịch sử và màn Connections không có nút cấp kết nối cho đơn đó.
+- Admin sửa rồi archive sản phẩm thử. Tạo nhân viên Retail với mật khẩu từ 12 ký tự, sau đó thử đăng nhập bằng nhân viên đó. Retail không được gọi API Admin. Billing chỉ làm việc với Account ID đã được cấp.
+- Sau rehearsal, cả nhóm ghi commit, người chạy, môi trường, kết quả và lỗi còn mở vào biên bản. Chốt blocker khi chạy lại được bước lỗi trên cùng bản demo.
 
-## Tiêu chí nghiệm thu
+## Kết quả chạy thử 16/11/2026
 
-- Retail, Technical, Admin và Billing đăng nhập bằng tài khoản riêng. Người dùng chỉ gọi được thao tác được cấp quyền.
-- Admin thêm, sửa, ngừng dùng gói và thiết bị. Retail chỉ thấy gói đang hoạt động.
-- Retail tạo, sửa và tra cứu Customer. Chỉ Request đã xác nhận mới có Order ID.
-- Technical chỉ cấp kết nối sau `Feasible`. Nhánh Dial-up kiểm tra đường dây khi cần.
-- Order ID có 11 ký tự. Account ID có 16 ký tự. Xác nhận hoặc cấp kết nối lại cho cùng bản ghi không tạo thêm Order hoặc Connection.
-- Lịch sử hiển thị người thao tác, thời điểm và kết quả. Retail ghi phản hồi sau khi đã cấp kết nối.
+- Frontend build/test, backend build và smoke test trên SQLite sạch đều đạt.
+- Lượt kiểm tra bằng trình duyệt đã tạo và tra cứu khách, xác nhận hai Request, cấp Connection cho Broadband và từ chối Dial-up có lý do. Broadband trả Order `B0000000001`, Account `B101000000000001`. Billing báo `Paid` sau khi tải lại. Feedback cũng còn sau khi tải lại Order. Public tracking tìm được cả hai mã.
+- Admin tạo, sửa và ngừng dùng Plan/Product. Nhân viên Retail vừa tạo đăng nhập được. Migration SQL Server xuất được script, còn chạy thử nghiệp vụ dùng SQLite.
+- Hai lỗi đã xử lý trong lượt chuẩn bị là màn Orders đọc trường liên hệ thiếu và màn Activation đòi dữ liệu kho khi cấp Connection. Nhóm dùng bảng trên để phân vai và diễn tập phần thuyết trình.
 
-## Giả định sử dụng trong bản demo
+Review 1 ghi nhận thanh toán toàn phần thủ công trên một billing record cho mỗi Connection. Cổng thanh toán, hóa đơn định kỳ, upload hồ sơ, cấp phát thiết bị và cổng khách hàng thuộc scope sau.
 
-Bản Review 1 dùng format 16 ký tự theo phần Proposed Solution và tab Demo Flow. Retail nhập yêu cầu thay mặt khách tại cửa hàng, sau đó xác nhận thành Order. Gói BB Basic dùng giá mẫu 225 USD/tháng theo mức Broadband 64 Kbps trong đề. Các mốc giảm giá chồng nhau trong đề và giá thuê bao còn thiếu cần được chốt trước khi lập hóa đơn.
-
-## Kết quả chạy thử ngày 11/11/2026
-
-Build .NET thành công. Smoke test trên SQLite sạch đạt 22 nhóm kiểm tra, gồm migration, seed, đăng nhập bốn vai trò, ràng buộc quyền, validation, luồng Broadband, nhánh Dial-up bị từ chối và phản hồi theo Order. Phát hiện và đã sửa lỗi khóa ngoại khiến lịch sử trạng thái không xuất hiện trên đơn. Migration SQL Server tạo được script SQL idempotent. Lượt kiểm tra này chạy với SQLite.
-
-| Bước đã chạy trên trình duyệt | Bằng chứng |
-| --- | --- |
-| Retail tạo khách hàng và Request | [Ảnh hàng chờ yêu cầu](evidence/01-retail-request.png) |
-| Retail xác nhận thành Order | [Ảnh Order Pending](evidence/02-order-pending.png) |
-| Technical mở hàng chờ | [Ảnh Technical Queue](evidence/03-technical-queue.png) |
-| Technical lưu kết quả khả thi | [Ảnh Order Feasible](evidence/04-order-feasible.png) |
-| Technical cấp kết nối và kiểm tra Account ID | [Ảnh Order Connected](evidence/05-connection-account.png) |
-
-Nhóm còn lượt rehearsal theo phân công và cần xác nhận môi trường dùng chung trước buổi review.
+Ảnh lịch sử từ prototype ngày 11/11/2026 nằm trong [evidence](evidence/).

@@ -17,6 +17,29 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
+            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
+                {
+                    b.Property<long>("ConnectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PaidById")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConnectionId");
+
+                    b.HasIndex("PaidById");
+
+                    b.ToTable("BillingRecords");
+                });
+
             modelBuilder.Entity("Nexus.Domain.City", b =>
                 {
                     b.Property<string>("Code")
@@ -374,6 +397,20 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.HasIndex("PlanId");
 
                     b.ToTable("Requests");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
+                {
+                    b.HasOne("Nexus.Domain.Connection", null)
+                        .WithOne()
+                        .HasForeignKey("Nexus.Domain.BillingRecord", "ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("PaidById")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Nexus.Domain.Connection", b =>

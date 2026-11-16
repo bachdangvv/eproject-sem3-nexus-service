@@ -68,8 +68,8 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
     {
         var customer = await operations.FindCustomerAsync(input.CustomerId);
         var plan = await catalog.FindPlanAsync(input.PlanId);
-        if (customer is null)
-            throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an existing customer.");
+        if (customer is null || customer.Status == "SUSPENDED")
+            throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an active customer.");
         if (plan is null || !plan.Active)
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an active service plan.");
 

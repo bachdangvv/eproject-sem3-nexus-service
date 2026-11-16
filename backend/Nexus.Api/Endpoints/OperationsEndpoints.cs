@@ -9,13 +9,15 @@ public static class OperationsEndpoints
     public static void MapOperations(this RouteGroupBuilder api)
     {
         var retail = api.MapGroup("").RequireAuthorization(policy => policy.RequireRole(Roles.Retail));
+        var customers = api.MapGroup("/customers")
+            .RequireAuthorization(policy => policy.RequireRole(Roles.Retail, Roles.Admin));
         var operations = api.MapGroup("").RequireAuthorization(policy => policy.RequireRole(Roles.Retail, Roles.Technical));
         var technical = api.MapGroup("").RequireAuthorization(policy => policy.RequireRole(Roles.Technical));
 
-        retail.MapGet("/customers", (string? q, OperationsService service) => service.CustomersAsync(q));
-        retail.MapPost("/customers", async (CustomerInput input, OperationsService service) =>
+        customers.MapGet("", (string? q, OperationsService service) => service.CustomersAsync(q));
+        customers.MapPost("", async (CustomerInput input, OperationsService service) =>
             Results.Json(await service.CreateCustomerAsync(input), statusCode: 201));
-        retail.MapPut("/customers/{id:int}", (int id, CustomerInput input, OperationsService service) =>
+        customers.MapPut("/{id:int}", (int id, CustomerInput input, OperationsService service) =>
             service.UpdateCustomerAsync(id, input));
         retail.MapGet("/requests", (OperationsService service) => service.PendingRequestsAsync());
         retail.MapPost("/requests", async (RequestInput input, OperationsService service, ClaimsPrincipal actor) =>

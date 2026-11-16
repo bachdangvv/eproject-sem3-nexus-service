@@ -24,6 +24,7 @@ public static class InfrastructureRegistration
         services.AddScoped<EfNexusStore>();
         services.AddScoped<ICatalogStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IOperationsStore>(provider => provider.GetRequiredService<EfNexusStore>());
+        services.AddScoped<IBillingStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IStaffStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
         services.AddScoped<IPasswordService, IdentityPasswordService>();

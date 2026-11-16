@@ -24,8 +24,8 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 
 | Method và đường dẫn | Quyền | Request và response |
 | --- | --- | --- |
-| `GET /customers?q=...` | Retail | Tối đa 100 khách theo mã, tên hoặc điện thoại. Trả mảng Customer. |
-| `POST /customers`, `PUT /customers/{id}` | Retail | `{ name, phone, address, cityCode }` → Customer, 201 hoặc 200 |
+| `GET /customers?q=...` | Retail, Admin | Tối đa 100 khách theo mã, tên hoặc điện thoại. Trả mảng Customer. |
+| `POST /customers`, `PUT /customers/{id}` | Retail, Admin | `{ name, phone, address, cityCode }` và các trường tùy chọn → Customer, 201 hoặc 200 |
 | `GET /requests` | Retail | Tối đa 100 Request chờ xác nhận |
 | `POST /requests` | Retail | `{ customerId, planId, hasNexusLandline }` → Request, 201. Gói phải đang hoạt động. |
 | `POST /requests/{id}/confirm` | Retail | Body trống → Order `Pending`, 201. Lặp lại trả Order hiện có, 200. |
@@ -38,7 +38,7 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 ```text
 Customer { id, code, name, phone, address, cityCode }
 Request  { id, customerId, customerName, planId, planName, type, cityCode,
-           address, hasNexusLandline, createdAt }
+           address, hasNexusLandline, price, createdAt }
 Order    { code, requestId, status, request, createdAt, accountId, activatedAt }
 History  { status, at, actor, note, distanceOk, serverAvailable, landlineFeasible }
 Feedback { rating, comment, createdAt }
@@ -48,6 +48,16 @@ Feedback { rating, comment, createdAt }
 
 Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `contactPerson`, `customerType` và `status`. FE dùng `id` số làm khóa API và `code` dạng `CUS-000001` để hiển thị.
 
+## Billing và Payment
+
+| Method và đường dẫn | Quyền | Kết quả |
+| --- | --- | --- |
+| `GET /billing/accounts/{accountId}` | Billing | Tìm Connection và trả `{ accountId, orderId, customerName, planName, amount, status, paidAt }`. |
+| `POST /billing/accounts/{accountId}` | Billing | Tạo một billing record cho Connection, lưu giá gói tại thời điểm tạo. Trả bản ghi cũ nếu gọi lại. |
+| `POST /billing/accounts/{accountId}/payment` | Billing | Ghi nhận đã thanh toán toàn bộ thủ công, lưu người ghi nhận và thời điểm. Trả 409 nếu chưa có billing record. Gọi lại giữ nguyên thời điểm thanh toán. |
+
+Các POST không cần body. Trạng thái lần lượt là `NotBilled → Unpaid → Paid`. Account ID không khớp Connection trả 404.
+
 ## Public tracking
 
 | Method và đường dẫn | Quyền | Response |
@@ -55,6 +65,6 @@ Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `conta
 | `GET /public/track/order/{code}` | Công khai | Trạng thái order, service type, city và Account ID nếu đã connected |
 | `GET /public/track/account/{accountId}` | Công khai | Trạng thái account và order liên kết |
 
-Public tracking chỉ trả dữ liệu nền để FE tự mask customer name và route trước khi hiển thị.
+Public tracking chỉ trả trạng thái, loại dịch vụ, mã thành phố và mã tham chiếu. Tên và địa chỉ khách hàng chỉ xuất hiện trong các API nội bộ có phân quyền.
 
 Lỗi 400 cho dữ liệu hoặc token CSRF không hợp lệ, 401 khi phiên hoặc đăng nhập không hợp lệ, 403 khi thiếu quyền, 404 khi không tìm thấy bản ghi, 409 khi sai bước xử lý hoặc trùng dữ liệu và 429 khi vượt giới hạn đăng nhập.
