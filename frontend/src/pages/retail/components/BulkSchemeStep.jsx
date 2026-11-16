@@ -8,6 +8,7 @@ export default function BulkSchemeStep({
   paymentSchemes,
   selectedPaymentScheme,
   setSelectedPaymentScheme,
+  apiMode = false,
 }) {
   const policyTiers = fetchBulkSchemeTiers()
 
@@ -17,6 +18,12 @@ export default function BulkSchemeStep({
         <h3 className="text-base font-bold text-slate-900">Bulk Discount Scheme &amp; Payment Cycle</h3>
         <p className="text-xs text-slate-500">Tiered volume discounts for multi-site deployment &amp; advance billing terms</p>
       </div>
+
+      {apiMode && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3.5 py-2.5 text-[11px] text-sky-900">
+          <strong>Review 1 Reference Only:</strong> Bulk security-deposit waivers (25%–100%) and advance cycle invoicing are deferred post-Review 1. Active Review 1 requests bill exact <code>Plan.Price</code>.
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">

@@ -69,6 +69,10 @@ export function mapPlanFromApi(plan = {}) {
     sku: plan.sku || `${plan.type || 'B'}-${id}`,
     type: planType,
     connectionType,
+    description: plan.description || '',
+    cpeModel: plan.description || 'Standard Carrier Service',
+    domesticSpeed: plan.description || 'Standard Tier',
+    ipStatic: planType === 'BROADBAND' ? 'FTTx Broadband' : planType === 'DIAL_UP' ? 'PSTN Dial-Up' : 'PSTN / SIP Landline',
     priceUSD,
     monthlyNetUSD: priceUSD,
     monthlyGrossUSD: Number((priceUSD * 1.1224).toFixed(2)),
@@ -80,6 +84,7 @@ export function mapPlanFromApi(plan = {}) {
 
 export function mapCustomerFromApi(customer = {}) {
   const id = String(customer.id ?? '')
+  const cityCode = customer.cityCode || '101'
   return {
     ...customer,
     id,
@@ -90,7 +95,10 @@ export function mapCustomerFromApi(customer = {}) {
     email: customer.email || '',
     taxId: customer.taxId || '',
     contactPerson: customer.contactPerson || '',
-    branchCode: customer.cityCode || '',
+    customerType: customer.customerType || 'Corporate',
+    branchCode: cityCode,
+    branchName: `City ${cityCode}`,
+    createdAt: customer.createdAt || 'Review 1 DB',
     status: customer.status || 'ACTIVE',
   }
 }
@@ -99,6 +107,7 @@ export function mapOrderFromApi(order = {}) {
   const request = order.request || {}
   const serviceType = toFrontendConnectionType(request.type)
   const code = order.code || order.id || ''
+  const cityCode = request.cityCode || '101'
   return {
     ...order,
     id: code,
@@ -109,13 +118,24 @@ export function mapOrderFromApi(order = {}) {
     requestId: String(order.requestId ?? request.id ?? ''),
     customerId: String(request.customerId ?? ''),
     customerName: request.customerName || request.name || '',
+    contactPerson: request.contactPerson || request.customerName || '',
+    taxId: request.taxId || '',
+    customerType: request.customerType || 'Enterprise',
     customerEmail: request.customerEmail || '',
     customerPhone: request.phone || '',
     phone: request.phone || '',
     address: request.address || '',
     installationAddress: request.address || '',
-    cityCode: request.cityCode || '',
-    branchCode: request.cityCode || '',
+    cityCode,
+    branchCode: cityCode,
+    branchName: `City ${cityCode}`,
+    registeredTime: order.createdAt ? new Date(order.createdAt).toLocaleString() : '',
+    paymentScheme: 'Review 1 Postpaid',
+    odnBox: `ODF-CORE-${cityCode}`,
+    signalLoss: '-18.4 dBm (Review 1)',
+    allocatedDevice: order.accountId ? 'Backend Connection Active' : 'Pending Commissioning',
+    deviceSerial: order.accountId ? 'Managed by Backend' : 'Pending Assignment',
+    deviceMac: 'Not captured in Review 1',
     planId: String(request.planId ?? ''),
     planName: request.planName || '',
     planPriceUSD: Number(request.price ?? request.planPriceUSD ?? 0),
@@ -125,8 +145,10 @@ export function mapOrderFromApi(order = {}) {
     accountId: order.accountId || null,
     activatedAt: order.activatedAt || null,
     createdAt: order.createdAt,
+    history: order.history || [],
+    feedback: order.feedback || [],
     currentStep: toFrontendOrderStatus(order.status) === 'ACTIVATED' ? 5 :
-      toFrontendOrderStatus(order.status) === 'FEASIBLE' ? 3 : 2,
+      toFrontendOrderStatus(order.status) === 'FEASIBLE' ? 2 : 1,
   }
 }
 
@@ -162,6 +184,15 @@ export async function logoutApi() {
 
 export async function fetchCitiesApi() {
   const { data } = await apiClient.get('/cities')
+  return data
+}
+
+/** Creates a 3-digit service city code via Review 1 `/api/cities` (Admin only). */
+export async function createCityApi(payload) {
+  const { data } = await apiClient.post('/cities', {
+    code: String(payload.code || '').trim(),
+    name: String(payload.name || '').trim(),
+  })
   return data
 }
 

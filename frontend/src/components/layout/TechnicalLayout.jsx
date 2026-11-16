@@ -4,22 +4,22 @@ import {
   HardHat,
   Router,
   Activity,
-  Search,
-  Bell,
-  HelpCircle,
   CheckCircle2,
   AlertTriangle,
   Info,
 } from 'lucide-react'
 import BackgroundAtmosphere from '../common/BackgroundAtmosphere'
 import Footer from './Footer'
+import PortalHeaderSession from './PortalHeaderSession'
+import PortalTopbarActions from './PortalTopbarActions'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 export const TECHNICAL_NAV_ITEMS = [
   { id: 'surveys', label: 'ODN Feasibility Surveys', icon: HardHat, path: '/technical/surveys' },
   { id: 'activations', label: 'Circuit Activation & Commissioning', icon: Router, path: '/technical/activations' },
   { id: 'lifecycle', label: 'Account Lifecycle & Plan Change', icon: Activity, path: '/technical/lifecycle' },
-  { id: 'map', label: 'ODN Fiber Topology Map', icon: Network, path: '/coming-soon' },
-  { id: 'diagnostics', label: 'Optical Power Diagnostics', icon: Activity, path: '/coming-soon' },
+  { id: 'map', label: 'ODN Fiber Topology Map', icon: Network, path: '/technical/map' },
+  { id: 'diagnostics', label: 'Optical Power Diagnostics', icon: Activity, path: '/technical/diagnostics' },
 ]
 
 export default function TechnicalLayout({
@@ -29,6 +29,7 @@ export default function TechnicalLayout({
   children,
 }) {
   const navigate = useNavigate()
+  const isApiMode = apiMode || REVIEW1_API_MODE
 
   return (
     <div className="relative min-h-screen flex flex-col justify-between font-sans text-slate-800">
@@ -73,7 +74,7 @@ export default function TechnicalLayout({
                   <span className="h-2 w-2 rounded-full bg-sky-500" />
                   DISPATCH QUEUE
                   <span className="text-[9px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                    DEMO MODE
+                    {isApiMode ? 'API' : 'DEMO MODE'}
                   </span>
                 </span>
               </div>
@@ -81,52 +82,13 @@ export default function TechnicalLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative hidden md:block w-72">
-              <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search order ID, ODF box, address..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-1.5 pr-3 pl-8 text-xs text-slate-700 outline-none transition focus:border-brand-soft focus:bg-white"
-              />
-            </div>
+            <PortalTopbarActions portal="technical" isApiMode={isApiMode} />
 
-            <div className="flex items-center gap-1.5">
-              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-black text-slate-700">
-                <span className="h-2 w-2 rounded-full bg-sky-500" />
-                SIMULATED OLT
-              </span>
-              <button
-                type="button"
-                className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Notifications"
-              >
-                <Bell size={14} />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                  3
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Help"
-              >
-                <HelpCircle size={14} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-2.5 py-1">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-navy text-[10px] font-black text-white">
-                VN
-              </div>
-              <div className="hidden text-left sm:block">
-                <span className="block text-[9px] font-semibold text-slate-400 uppercase tracking-wider">
-                  NOC ENGINEER
-                </span>
-                <span className="block text-xs font-bold text-navy">
-                  Eng. Vu Hoang Nam [L2]
-                </span>
-              </div>
-            </div>
+            <PortalHeaderSession
+              fallbackInitials="VN"
+              fallbackTopLabel="NOC ENGINEER"
+              fallbackBottomLabel="Eng. Vu Hoang Nam [L2]"
+            />
           </div>
         </div>
 
@@ -156,9 +118,9 @@ export default function TechnicalLayout({
           <div className="hidden md:flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-1.5 font-mono text-xs font-bold text-slate-700">
               <span className="h-2 w-2 rounded-full bg-sky-500" />
-              {apiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
+              {isApiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
               <span className="text-[10px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                {apiMode ? 'API DATA' : 'MOCK DATA'}
+                {isApiMode ? 'API DATA' : 'MOCK DATA'}
               </span>
             </span>
           </div>

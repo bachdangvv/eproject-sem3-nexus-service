@@ -34,6 +34,7 @@ import {
   isOrderTerminalStatus,
   normalizeOrderStatus,
 } from '../../../utils/orderStatus'
+import { REVIEW1_API_MODE, recordFeedbackApi } from '../../../services/review1Api'
 
 export default function OrderDetailDrawer({
   selectedOrder,
@@ -44,10 +45,15 @@ export default function OrderDetailDrawer({
   onCollectDeposit,
   onDispatchFieldTech,
   onPrintReceipt,
+  onFeedbackSaved,
 }) {
   const [docAvailability, setDocAvailability] = useState({})
   const [docActionError, setDocActionError] = useState('')
   const [busyDocKey, setBusyDocKey] = useState(null)
+  const [feedbackRating, setFeedbackRating] = useState(5)
+  const [feedbackComment, setFeedbackComment] = useState('')
+  const [savingFeedback, setSavingFeedback] = useState(false)
+  const [feedbackError, setFeedbackError] = useState('')
 
   const attachedDocuments = useMemo(() => {
     if (!selectedOrder) return []
@@ -114,6 +120,28 @@ export default function OrderDetailDrawer({
     }
   }
 
+  async function handleSubmitFeedback(e) {
+    e.preventDefault()
+    if (!selectedOrder?.id || savingFeedback || !feedbackComment.trim()) return
+    setSavingFeedback(true)
+    setFeedbackError('')
+    try {
+      await recordFeedbackApi(selectedOrder.id, {
+        rating: Number(feedbackRating),
+        comment: feedbackComment.trim(),
+      })
+      setFeedbackComment('')
+      onActionToast?.(`Feedback saved on order ${selectedOrder.id}.`)
+      onFeedbackSaved?.()
+    } catch (err) {
+      const msg = err?.message || 'Unable to save feedback.'
+      setFeedbackError(msg)
+      onActionToast?.(msg, 'error')
+    } finally {
+      setSavingFeedback(false)
+    }
+  }
+
   return (
     <div className="sticky top-20 rounded-3xl border border-slate-200/80 bg-white/80 p-5 shadow-sm backdrop-blur-md sm:p-6 space-y-4">
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -124,7 +152,11 @@ export default function OrderDetailDrawer({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          {!canModify ? (
+          {REVIEW1_API_MODE ? (
+            <span className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+              <span>{statusMeta.label}</span>
+            </span>
+          ) : !canModify ? (
             <span
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500"
               title={
@@ -246,7 +278,13 @@ export default function OrderDetailDrawer({
                 2. ODN Fiber Feasibility Survey
               </span>
               <p className="text-[10px] text-slate-400">
-                {isVoided ? `Closed (${statusMeta.label})` : `Signal: ${selectedOrder.signalLoss}`}
+                {isVoided
+                  ? `Closed (${statusMeta.label})`
+                  : normalizedStatus === ORDER_STATUS.PENDING_SURVEY
+                  ? 'Awaiting ODN feasibility survey'
+                  : isNotFeasible
+                  ? 'Marked Not Feasible'
+                  : `Signal: ${selectedOrder.signalLoss}`}
               </p>
             </div>
           </div>
@@ -320,15 +358,113 @@ export default function OrderDetailDrawer({
         </span>
         <div className="rounded-xl border border-slate-100 bg-white p-3 space-y-1">
           <span className="block font-bold text-slate-900">{selectedOrder.customerName}</span>
-          <span className="font-mono text-[11px] text-slate-400">Tax ID: {selectedOrder.taxId} &bull; {selectedOrder.customerType}</span>
+          <span className="font-mono text-[11px] text-slate-400">
+            Tax ID: {selectedOrder.taxId || '—'} &bull; {selectedOrder.customerType || 'Enterprise'}
+          </span>
           <div className="flex items-center justify-between text-[11px] text-slate-600">
-            <span>Contact: {selectedOrder.contactPerson}</span>
-            <span className="font-mono text-indigo-700 font-bold">{selectedOrder.phone}</span>
+            <span>Contact: {selectedOrder.contactPerson || '—'}</span>
+            <span className="font-mono text-indigo-700 font-bold">{selectedOrder.phone || '—'}</span>
           </div>
           <p className="text-[11px] text-slate-500">{selectedOrder.address}</p>
         </div>
       </div>
 
+      {REVIEW1_API_MODE && (
+        <>
+          <div className="space-y-2 border-t border-slate-100 pt-3 text-xs">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              BACKEND AUDIT HISTORY
+            </span>
+            {Array.isArray(selectedOrder.history) && selectedOrder.history.length > 0 ? (
+              <div className="space-y-2">
+                {selectedOrder.history.map((entry, idx) => (
+                  <div key={idx} className="rounded-xl border border-slate-100 bg-white p-2.5 text-[11px]">
+                    <div className="flex items-center justify-between font-bold text-slate-800">
+                      <span>{getOrderStatusMeta(entry.status).label}</span>
+                      <span className="font-mono text-[10px] text-slate-400">
+                        {entry.at ? new Date(entry.at).toLocaleString() : ''}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-slate-500">
+                      Actor: <span className="font-semibold text-slate-700">{entry.actor}</span>
+                      {entry.note ? ` — ${entry.note}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-100 bg-white p-2.5 text-[11px] text-slate-400">
+                Loading status history...
+              </div>
+            )}
+          </div>
+
+          {isActivated && (
+            <div className="space-y-2.5 border-t border-slate-100 pt-3 text-xs">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                CUSTOMER FEEDBACK
+              </span>
+              <form onSubmit={handleSubmitFeedback} className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="feedback-rating" className="text-[11px] font-bold text-slate-700">
+                    Service Rating (1–5)
+                  </label>
+                  <select
+                    id="feedback-rating"
+                    value={feedbackRating}
+                    onChange={(e) => setFeedbackRating(Number(e.target.value))}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 outline-none"
+                  >
+                    {[5, 4, 3, 2, 1].map((v) => (
+                      <option key={v} value={v}>{v} / 5</option>
+                    ))}
+                  </select>
+                </div>
+                <textarea
+                  rows={2}
+                  required
+                  maxLength={600}
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  placeholder="Enter subscriber satisfaction feedback..."
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 outline-none focus:border-indigo-500"
+                />
+                {feedbackError && (
+                  <p className="text-[11px] font-semibold text-rose-700">{feedbackError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={savingFeedback || !feedbackComment.trim()}
+                  className="w-full rounded-xl bg-indigo-600 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer disabled:opacity-50"
+                >
+                  {savingFeedback ? 'Saving Feedback...' : 'Save Feedback'}
+                </button>
+              </form>
+
+              {Array.isArray(selectedOrder.feedback) && selectedOrder.feedback.length > 0 && (
+                <div className="space-y-1.5">
+                  {selectedOrder.feedback.map((item, idx) => (
+                    <div key={idx} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 text-[11px] text-emerald-950">
+                      <div className="flex items-center justify-between font-bold">
+                        <span>{item.rating}/5 Stars</span>
+                        {item.createdAt && (
+                          <span className="font-mono text-[10px] text-emerald-700">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-slate-700">{item.comment}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {!REVIEW1_API_MODE && (
+      <>
       <div className="space-y-2 border-t border-slate-100 pt-3 text-xs">
         <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
           SECURITY DEPOSIT &amp; RECEIPT (CN16)
@@ -413,8 +549,10 @@ export default function OrderDetailDrawer({
           <div className="text-slate-500">{selectedOrder.deviceMac || 'Pending MAC Assignment'}</div>
         </div>
       </div>
+      </>
+      )}
 
-      {attachedDocuments.length > 0 && (
+      {!REVIEW1_API_MODE && attachedDocuments.length > 0 && (
         <div className="space-y-2 border-t border-slate-100 pt-3 text-xs">
           <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
             ATTACHED VERIFICATION DOCUMENTS
@@ -489,7 +627,7 @@ export default function OrderDetailDrawer({
         </div>
       )}
 
-      {!isCancelled && (
+      {!REVIEW1_API_MODE && !isCancelled && (
         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
           {!isTerminal && (
             <button

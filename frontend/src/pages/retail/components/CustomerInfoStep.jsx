@@ -1,4 +1,5 @@
 import { Building2, Mail, Phone, MapPin, User, Users } from 'lucide-react'
+import { REVIEW1_API_MODE } from '../../../services/review1Api'
 
 export default function CustomerInfoStep({
   customers = [],
@@ -42,7 +43,7 @@ export default function CustomerInfoStep({
               <option value="">-- Enter subscriber details manually --</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.customerName} ({c.taxId})
+                  {c.customerId || c.id} — {c.customerName}{c.taxId ? ` (${c.taxId})` : ''}
                 </option>
               ))}
             </select>
@@ -73,11 +74,11 @@ export default function CustomerInfoStep({
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Tax Code / Enterprise ID (MST) <span className="text-rose-500">*</span>
+            Tax Code / Enterprise ID (MST) {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
           </label>
           <input
             type="text"
-            required
+            required={!REVIEW1_API_MODE}
             value={taxId}
             onChange={(e) => setTaxId(e.target.value)}
             placeholder="e.g. 0108881948"
@@ -90,13 +91,13 @@ export default function CustomerInfoStep({
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Authorized Contact Representative <span className="text-rose-500">*</span>
+            Authorized Contact Representative {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
           </label>
           <div className="relative">
             <User size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              required
+              required={!REVIEW1_API_MODE}
               value={representativeName}
               onChange={(e) => setRepresentativeName(e.target.value)}
               placeholder="Full name of authorized contact"
@@ -119,7 +120,7 @@ export default function CustomerInfoStep({
               required
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="e.g. 0912 839 201"
+              placeholder="e.g. 0900000123"
               className={`w-full rounded-xl border bg-slate-50 py-2 pr-3 pl-8 text-xs font-medium text-slate-800 outline-none focus:bg-white ${
                 errors.customerPhone ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-600'
               }`}
@@ -130,13 +131,13 @@ export default function CustomerInfoStep({
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            E-Invoice Billing Email <span className="text-rose-500">*</span>
+            E-Invoice Billing Email {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
           </label>
           <div className="relative">
             <Mail size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
             <input
               type="email"
-              required
+              required={!REVIEW1_API_MODE}
               value={customerEmail}
               onChange={(e) => setCustomerEmail(e.target.value)}
               placeholder="billing@company.com"

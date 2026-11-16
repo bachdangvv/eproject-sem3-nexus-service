@@ -8,15 +8,15 @@ import {
   Layers,
   ShieldCheck,
   Users,
-  Search,
-  Bell,
-  HelpCircle,
   CheckCircle2,
   AlertTriangle,
   Info,
 } from 'lucide-react'
 import BackgroundAtmosphere from '../common/BackgroundAtmosphere'
 import Footer from './Footer'
+import PortalHeaderSession from './PortalHeaderSession'
+import PortalTopbarActions from './PortalTopbarActions'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 export const ADMIN_NAV_ITEMS = [
   { id: 'customers', label: 'Customers', icon: Users, path: '/admin/customers' },
@@ -25,7 +25,7 @@ export const ADMIN_NAV_ITEMS = [
   { id: 'inventory', label: 'Hardware & Inventory', icon: HardDrive, path: '/admin/inventory' },
   { id: 'users', label: 'Access Control & RBAC', icon: ShieldCheck, path: '/admin/users' },
   { id: 'schemes', label: 'Bulk Schemes Audit', icon: Layers, path: '/admin/schemes' },
-  { id: 'overview', label: 'Network Overview', icon: LayoutGrid, path: '/coming-soon' },
+  { id: 'overview', label: 'Network Overview', icon: LayoutGrid, path: '/admin/overview' },
 ]
 
 export default function AdminLayout({
@@ -35,6 +35,7 @@ export default function AdminLayout({
   children,
 }) {
   const navigate = useNavigate()
+  const isApiMode = apiMode || REVIEW1_API_MODE
 
   return (
     <div className="relative min-h-screen flex flex-col justify-between font-sans text-slate-800">
@@ -77,9 +78,9 @@ export default function AdminLayout({
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-slate-50 px-2.5 py-0.5 font-mono text-[10px] font-bold text-slate-700">
                   <span className="h-2 w-2 rounded-full bg-sky-500" />
-                  LOCAL STORAGE
+                  {isApiMode ? 'ASP.NET API' : 'LOCAL STORAGE'}
                   <span className="text-[9px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                    DEMO SANDBOX
+                    {isApiMode ? 'REVIEW 1' : 'DEMO SANDBOX'}
                   </span>
                 </span>
               </div>
@@ -87,52 +88,13 @@ export default function AdminLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative hidden md:block w-72">
-              <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search customers, plans, inventory, users..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-1.5 pr-3 pl-8 text-xs text-slate-700 outline-none transition focus:border-brand-soft focus:bg-white"
-              />
-            </div>
+            <PortalTopbarActions portal="admin" isApiMode={isApiMode} />
 
-            <div className="flex items-center gap-1.5">
-              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-black text-slate-700">
-                <span className="h-2 w-2 rounded-full bg-sky-500" />
-                DEMO ENV
-              </span>
-              <button
-                type="button"
-                className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Notifications"
-              >
-                <Bell size={14} />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                  1
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Help"
-              >
-                <HelpCircle size={14} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-2.5 py-1">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-navy text-[10px] font-black text-white">
-                QB
-              </div>
-              <div className="hidden text-left sm:block">
-                <span className="block text-[9px] font-semibold text-slate-400 uppercase tracking-wider">
-                  KS. Le Quoc Bao
-                </span>
-                <span className="block text-xs font-bold text-navy">
-                  Senior Telecom Architect
-                </span>
-              </div>
-            </div>
+            <PortalHeaderSession
+              fallbackInitials="QB"
+              fallbackTopLabel="KS. Le Quoc Bao"
+              fallbackBottomLabel="Senior Telecom Architect"
+            />
           </div>
         </div>
 
@@ -162,9 +124,9 @@ export default function AdminLayout({
           <div className="hidden md:flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-1.5 font-mono text-xs font-bold text-slate-700">
               <span className="h-2 w-2 rounded-full bg-sky-500" />
-              {apiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
+              {isApiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
               <span className="text-[10px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                {apiMode ? 'API DATA' : 'MOCK DATA'}
+                {isApiMode ? 'API DATA' : 'MOCK DATA'}
               </span>
             </span>
           </div>

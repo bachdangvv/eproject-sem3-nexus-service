@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   FileText,
   Search,
@@ -66,6 +66,11 @@ import {
   subscribePlansUpdated,
 } from '../../services/planService'
 import {
+  REVIEW1_API_MODE,
+  fetchOrderDetailApi,
+  fetchPlansApi,
+} from '../../services/review1Api'
+import {
   ORDER_STATUS,
   ORDER_STATUS_LIST,
   canModifyOrCancelOrder,
@@ -83,8 +88,16 @@ export default function OrdersListPage() {
     reload: reloadOrders,
   } = useAsyncResource(() => Promise.resolve(fetchOrders()), [])
   const orders = ordersData || []
+  const [searchParams] = useSearchParams()
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState(null)
+  const [detailNonce, setDetailNonce] = useState(0)
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '')
+
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q !== null) setSearchQuery(q)
+  }, [searchParams])
   const [selectedService, setSelectedService] = useState('ALL')
   const [selectedStatus, setSelectedStatus] = useState('ALL')
   const [selectedBranch, setSelectedBranch] = useState('ALL')
@@ -119,13 +132,36 @@ export default function OrdersListPage() {
     paymentScheme: 'Monthly Postpaid',
     status: ORDER_STATUS.PENDING_SURVEY
   })
-  const [catalogPlans, setCatalogPlans] = useState(() => fetchPlans({ activeOnly: true }))
+  const [catalogPlans, setCatalogPlans] = useState(() => (REVIEW1_API_MODE ? [] : fetchPlans({ activeOnly: true })))
 
   useEffect(() => {
+    if (REVIEW1_API_MODE) {
+      let cancelled = false
+      fetchPlansApi().then((plans) => {
+        if (!cancelled) setCatalogPlans(plans)
+      }).catch(() => {})
+      return () => { cancelled = true }
+    }
     const refreshPlans = () => setCatalogPlans(fetchPlans({ activeOnly: true }))
     refreshPlans()
     return subscribePlansUpdated(refreshPlans)
   }, [])
+
+  useEffect(() => {
+    if (!REVIEW1_API_MODE || !selectedOrder?.id) {
+      setSelectedOrderDetail(null)
+      return undefined
+    }
+    let cancelled = false
+    fetchOrderDetailApi(selectedOrder.id)
+      .then((detail) => {
+        if (!cancelled) setSelectedOrderDetail(detail)
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedOrderDetail(null)
+      })
+    return () => { cancelled = true }
+  }, [selectedOrder?.id, detailNonce])
 
   const [formErrors, setFormErrors] = useState({})
 
@@ -318,12 +354,15 @@ export default function OrdersListPage() {
   }
 
   const filteredOrders = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
     return orders.filter((order) => {
       const matchSearch =
-        order.id.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        order.customerName.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        order.contactPerson.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        order.phone.toLowerCase().includes(searchQuery.toLowerCase().trim())
+        !q ||
+        (order.id || '').toLowerCase().includes(q) ||
+        (order.accountId || '').toLowerCase().includes(q) ||
+        (order.customerName || '').toLowerCase().includes(q) ||
+        (order.contactPerson || '').toLowerCase().includes(q) ||
+        (order.phone || '').toLowerCase().includes(q)
 
       const matchService = selectedService === 'ALL' || order.serviceType === selectedService
       const matchStatus = selectedStatus === 'ALL' || normalizeOrderStatus(order.status) === selectedStatus
@@ -453,7 +492,7 @@ export default function OrdersListPage() {
   }
 
   return (
-    <RetailLayout activeNavId="orders" toast={toast}>
+    <RetailLayout activeNavId="orders" apiMode={REVIEW1_API_MODE} toast={toast}>
       <div className="card p-5 md:p-6 shadow-sm space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
           <div>
@@ -469,7 +508,7 @@ export default function OrdersListPage() {
                 Order Portfolio &amp; Status Tracking
               </h1>
               <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 font-mono text-[11px] font-bold text-sky-700">
-                STORE #101 DEMO
+                {REVIEW1_API_MODE ? 'REVIEW 1 API' : 'STORE #101 DEMO'}
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
@@ -798,7 +837,7 @@ export default function OrdersListPage() {
                                 {order.customerName}
                               </span>
                               <span className="block text-[11px] text-slate-500 truncate">
-                                {order.contactPerson} ({order.phone})
+                                {order.contactPerson || '—'}{order.phone ? ` (${order.phone})` : ''}
                               </span>
                               <span className="block text-[10px] text-slate-400 truncate" title={order.address}>
                                 {order.address}
@@ -831,7 +870,7 @@ export default function OrdersListPage() {
 
                           <td className="px-3.5 py-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">
-                              {canModifyOrCancelOrder(order.status) ? (
+                              {!REVIEW1_API_MODE && (canModifyOrCancelOrder(order.status) ? (
                                 <>
                                   <button
                                     onClick={(e) => {
@@ -866,7 +905,7 @@ export default function OrdersListPage() {
                                   <Lock className="h-3 w-3" />
                                   <span>Locked</span>
                                 </span>
-                              )}
+                              ))}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -892,7 +931,7 @@ export default function OrdersListPage() {
                 Showing {filteredOrders.length} of {orders.length} orders
               </span>
               <span className="font-mono text-[11px] font-semibold text-slate-400">
-                Local Portfolio View
+                {REVIEW1_API_MODE ? 'Review 1 Backend Portfolio' : 'Local Portfolio View'}
               </span>
             </div>
           </div>
@@ -900,7 +939,11 @@ export default function OrdersListPage() {
           <aside className="space-y-6">
             {selectedOrder ? (
               <OrderDetailDrawer
-                selectedOrder={selectedOrder}
+                selectedOrder={
+                  REVIEW1_API_MODE && selectedOrderDetail?.id === selectedOrder.id
+                    ? selectedOrderDetail
+                    : selectedOrder
+                }
                 onActionToast={showToast}
                 onEdit={handleOpenEditModal}
                 onCancelOrder={handleOpenCancelModal}
@@ -908,6 +951,7 @@ export default function OrdersListPage() {
                 onCollectDeposit={handleOpenCollectDeposit}
                 onDispatchFieldTech={handleDispatchFieldTech}
                 onPrintReceipt={handlePrintReceipt}
+                onFeedbackSaved={() => setDetailNonce((n) => n + 1)}
               />
             ) : (
               <AsyncStatePanel

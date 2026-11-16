@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Users,
   Search,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react'
 import AdminLayout from '../../components/layout/AdminLayout'
+import RetailLayout from '../../components/layout/RetailLayout'
 import AsyncStatePanel from '../../components/common/AsyncStatePanel'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { useToast } from '../../hooks/useToast'
@@ -26,10 +28,17 @@ import {
 } from '../../services/customerService'
 import {
   REVIEW1_API_MODE,
+  fetchCitiesApi,
   fetchCustomersApi,
   createCustomerApi,
   updateCustomerApi,
 } from '../../services/review1Api'
+
+const DEFAULT_CITIES = [
+  { code: '101', name: 'Hanoi Metro (HN)' },
+  { code: '201', name: 'Ho Chi Minh City (HCMC)' },
+  { code: '301', name: 'Da Nang (DN)' },
+]
 
 const EMPTY_FORM = {
   customerName: '',
@@ -43,7 +52,7 @@ const EMPTY_FORM = {
   status: 'ACTIVE',
 }
 
-export default function AdminCustomersPage() {
+export default function AdminCustomersPage({ portal = 'admin' }) {
   const {
     data: customersData,
     setData: setCustomers,
@@ -54,11 +63,32 @@ export default function AdminCustomersPage() {
     () => (REVIEW1_API_MODE ? fetchCustomersApi() : Promise.resolve(fetchCustomers())),
     []
   )
+  const { data: apiCities } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchCitiesApi() : Promise.resolve(null)),
+    []
+  )
+  const cities = Array.isArray(apiCities) && apiCities.length > 0 ? apiCities : DEFAULT_CITIES
   const customers = customersData || []
+  const Layout = portal === 'retail' ? RetailLayout : AdminLayout
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q') || ''
+  const [searchQuery, setSearchQuery] = useState(initialQuery)
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [branchFilter, setBranchFilter] = useState('ALL')
+
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q !== null) setSearchQuery(q)
+  }, [searchParams])
+
+  const cityNameByCode = useMemo(() => {
+    const map = {}
+    for (const c of cities) {
+      map[c.code] = c.name
+    }
+    return map
+  }, [cities])
   const [modalMode, setModalMode] = useState(null)
   const [editingCustomer, setEditingCustomer] = useState(null)
   const [formData, setFormData] = useState(EMPTY_FORM)
@@ -74,6 +104,7 @@ export default function AdminCustomersPage() {
       const matchesQuery =
         !query ||
         (c.id || '').toLowerCase().includes(query) ||
+        (c.customerId || '').toLowerCase().includes(query) ||
         (c.customerName || '').toLowerCase().includes(query) ||
         (c.taxId || '').toLowerCase().includes(query) ||
         (c.contactPerson || '').toLowerCase().includes(query) ||
@@ -194,7 +225,7 @@ export default function AdminCustomersPage() {
   }
 
   return (
-    <AdminLayout activeNavId="customers" toast={toast}>
+    <Layout activeNavId="customers" apiMode={REVIEW1_API_MODE} toast={toast}>
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5 my-8">
@@ -247,11 +278,11 @@ export default function AdminCustomersPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tax ID / MST <span className="text-rose-500">*</span>
+                    Tax ID / MST {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
                   </label>
                   <input
                     type="text"
-                    required
+                    required={!REVIEW1_API_MODE}
                     value={formData.taxId}
                     onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
                     placeholder="e.g. 0301234567"
@@ -274,11 +305,11 @@ export default function AdminCustomersPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Authorized Contact <span className="text-rose-500">*</span>
+                    Authorized Contact {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
                   </label>
                   <input
                     type="text"
-                    required
+                    required={!REVIEW1_API_MODE}
                     value={formData.contactPerson}
                     onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
                     placeholder="e.g. Nguyen Minh Quan"
@@ -295,18 +326,18 @@ export default function AdminCustomersPage() {
                     required
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="e.g. +84 908 112 334"
+                    placeholder="e.g. 0900000123"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Billing Email <span className="text-rose-500">*</span>
+                    Billing Email {!REVIEW1_API_MODE && <span className="text-rose-500">*</span>}
                   </label>
                   <input
                     type="email"
-                    required
+                    required={!REVIEW1_API_MODE}
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="billing@company.vn"
@@ -321,9 +352,11 @@ export default function AdminCustomersPage() {
                     onChange={(e) => setFormData({ ...formData, branchCode: e.target.value })}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
                   >
-                    <option value="101">101 - Hanoi Metro (HN)</option>
-                    <option value="201">201 - Ho Chi Minh City (HCMC)</option>
-                    <option value="301">301 - Da Nang (DN)</option>
+                    {cities.map((city) => (
+                      <option key={city.code} value={city.code}>
+                        {city.code} - {city.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -438,14 +471,25 @@ export default function AdminCustomersPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="flex items-center gap-1.5 rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 shadow-md shadow-navy/20 transition cursor-pointer"
-          >
-            <Plus size={14} />
-            <span>Add Customer</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {portal === 'admin' && REVIEW1_API_MODE && (
+              <Link
+                to="/admin/plans#cities"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                <MapPin size={14} className="text-indigo-600" />
+                <span>Manage Cities</span>
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="flex items-center gap-1.5 rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 shadow-md shadow-navy/20 transition cursor-pointer"
+            >
+              <Plus size={14} />
+              <span>Add Customer</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -518,9 +562,11 @@ export default function AdminCustomersPage() {
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">All Metro Regions</option>
-            <option value="101">Hanoi Metro (101)</option>
-            <option value="201">Ho Chi Minh City (201)</option>
-            <option value="301">Da Nang (301)</option>
+            {cities.map((city) => (
+              <option key={city.code} value={city.code}>
+                {city.name} ({city.code})
+              </option>
+            ))}
           </select>
         </div>
 
@@ -577,7 +623,7 @@ export default function AdminCustomersPage() {
                 {filteredCustomers.map((customer) => (
                   <tr key={customer.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="font-mono font-bold text-indigo-700">{customer.id}</span>
+                      <span className="font-mono font-bold text-indigo-700">{customer.customerId || customer.id}</span>
                       <div className="text-[10px] text-slate-400 font-mono">{customer.createdAt}</div>
                     </td>
 
@@ -585,29 +631,29 @@ export default function AdminCustomersPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-900">{customer.customerName}</span>
                         <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-                          {customer.customerType}
+                          {customer.customerType || 'Corporate'}
                         </span>
                       </div>
                       <div className="font-mono text-[11px] text-slate-500 mt-0.5">
-                        MST: {customer.taxId}
+                        MST: {customer.taxId || '—'}
                       </div>
                     </td>
 
                     <td className="px-4 py-3.5">
-                      <div className="font-semibold text-slate-800">{customer.contactPerson}</div>
+                      <div className="font-semibold text-slate-800">{customer.contactPerson || '—'}</div>
                       <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
                         <Phone size={11} className="text-slate-400" />
                         <span>{customer.phone}</span>
                       </div>
                       <div className="flex items-center gap-1 text-[11px] text-slate-500">
                         <Mail size={11} className="text-slate-400" />
-                        <span>{customer.email}</span>
+                        <span>{customer.email || '—'}</span>
                       </div>
                     </td>
 
                     <td className="px-4 py-3.5 max-w-[260px]">
                       <div className="font-semibold text-slate-800">
-                        {customer.branchName}{' '}
+                        {cityNameByCode[customer.branchCode] || customer.branchName || `City ${customer.branchCode}`}{' '}
                         <span className="font-mono text-[10px] text-slate-400">({customer.branchCode})</span>
                       </div>
                       <div className="mt-0.5 flex items-start gap-1 text-[11px] text-slate-500">
@@ -633,31 +679,36 @@ export default function AdminCustomersPage() {
                         <button
                           type="button"
                           onClick={() => openEditModal(customer)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition cursor-pointer"
                           title="Edit Customer"
                         >
-                          <Edit3 size={15} />
+                          <Edit3 size={13} />
+                          <span>Edit</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(customer)}
-                          className={`rounded-lg px-2 py-1 text-[10px] font-bold border transition cursor-pointer ${
-                            customer.status === 'ACTIVE'
-                              ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                              : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          }`}
-                          title={customer.status === 'ACTIVE' ? 'Suspend Customer' : 'Reactivate Customer'}
-                        >
-                          {customer.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingCustomer(customer)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
-                          title="Delete Customer"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {!REVIEW1_API_MODE && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatus(customer)}
+                              className={`rounded-lg px-2 py-1 text-[10px] font-bold border transition cursor-pointer ${
+                                customer.status === 'ACTIVE'
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              }`}
+                              title={customer.status === 'ACTIVE' ? 'Suspend Customer' : 'Reactivate Customer'}
+                            >
+                              {customer.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingCustomer(customer)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer"
+                              title="Delete Customer"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -667,7 +718,7 @@ export default function AdminCustomersPage() {
           </div>
         )}
       </div>
-    </AdminLayout>
+    </Layout>
   )
 }
 

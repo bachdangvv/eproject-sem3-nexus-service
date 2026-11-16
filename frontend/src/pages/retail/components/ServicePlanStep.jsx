@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, PhoneCall, PlusCircle } from 'lucide-react'
+import { REVIEW1_API_MODE } from '../../../services/review1Api'
 
 export default function ServicePlanStep({
   connectionTypes,
@@ -10,6 +11,7 @@ export default function ServicePlanStep({
   includePoESwitch,
   setIncludePoESwitch,
   hasLandlineBundle,
+  setHasLandlineBundle,
   landlineOption = 'NONE',
   onSelectLandlineOption,
   existingLandlineNumber = '',
@@ -118,20 +120,51 @@ export default function ServicePlanStep({
       </div>
 
       <div className="border-t border-slate-100 pt-3 space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">Hardware &amp; Auxiliary Add-ons</label>
-          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={includePoESwitch}
-              onChange={(e) => setIncludePoESwitch(e.target.checked)}
-              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <span>Managed L2 PoE+ Gigabit Switch (+ $30/mo)</span>
-          </label>
-        </div>
+        {REVIEW1_API_MODE ? (
+          <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-3.5 py-2.5 text-[11px] text-sky-900">
+            <strong>Review 1 Pricing Scope:</strong> Orders bill strictly against the selected <code>Plan.Price</code> after activation. Auxiliary hardware add-ons belong to post-Review 1 billing.
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">Hardware &amp; Auxiliary Add-ons</label>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={includePoESwitch}
+                onChange={(e) => setIncludePoESwitch(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Managed L2 PoE+ Gigabit Switch (+ $30/mo)</span>
+            </label>
+          </div>
+        )}
 
-        {isDialupSelected && (
+        {isDialupSelected && REVIEW1_API_MODE && (
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <PhoneCall size={16} className="mt-0.5 shrink-0 text-indigo-600" />
+              <div>
+                <div className="text-xs font-extrabold text-slate-900">
+                  Dial-Up Nexus Landline Declaration (Review 1 Flow)
+                </div>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                  Confirm whether this subscriber already has an active Nexus landline. Leave unchecked if you want Technical ODN Survey to inspect and decide landline feasibility.
+                </p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(hasLandlineBundle)}
+                onChange={(e) => setHasLandlineBundle?.(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Customer already has a Nexus landline</span>
+            </label>
+          </div>
+        )}
+
+        {isDialupSelected && !REVIEW1_API_MODE && (
           <div
             className={`rounded-2xl border p-4 space-y-3 transition ${
               dialupLandlineValidation.valid

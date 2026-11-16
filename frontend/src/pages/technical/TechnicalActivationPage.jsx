@@ -68,8 +68,13 @@ export default function TechnicalActivationPage() {
   const [isLoadingOrder, setIsLoadingOrder] = useState(Boolean(requestedOrderId))
   const [orderError, setOrderError] = useState(null)
   const [reloadNonce, setReloadNonce] = useState(0)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '')
   const [serviceFilter, setServiceFilter] = useState('ALL')
+
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q !== null) setSearchQuery(q)
+  }, [searchParams])
 
   useEffect(() => {
     setSelectedOrderId(requestedOrderId)
@@ -195,6 +200,11 @@ export default function TechnicalActivationPage() {
     if (selectedOrder.status === ORDER_STATUS.ACTIVATED && selectedOrder.accountId) {
       return selectedOrder.accountId
     }
+    if (REVIEW1_API_MODE) {
+      return activatedResult?.orderId === selectedOrder.orderId
+        ? activatedResult.accountId
+        : 'Issued on connection'
+    }
     const prefix = selectedOrder.orderId.charAt(0)
     return previewNextAccountId(prefix, selectedOrder.cityCode || selectedOrder.branchCode || '101')
   }, [selectedOrder, activatedResult])
@@ -224,7 +234,7 @@ export default function TechnicalActivationPage() {
       showToast(reason, 'error')
       return
     }
-    if (!signatoryName.trim()) {
+    if (!REVIEW1_API_MODE && !signatoryName.trim()) {
       showToast('Customer representative sign-off name is required.', 'error')
       return
     }
@@ -232,11 +242,11 @@ export default function TechnicalActivationPage() {
     setIsSubmitting(true)
     try {
       const res = await commissionCircuit(selectedOrder.orderId, {
-        deviceId: matchedWarehouseDevice.id,
-        serialNumber: matchedWarehouseDevice.serialNumber,
+        deviceId: matchedWarehouseDevice?.id || null,
+        serialNumber: matchedWarehouseDevice?.serialNumber || serialNumber.trim(),
         macAddress: macAddress.trim(),
-        model: matchedWarehouseDevice.model,
-        vendor: matchedWarehouseDevice.vendor,
+        model: matchedWarehouseDevice?.model || 'Review 1 Backend Connection',
+        vendor: matchedWarehouseDevice?.vendor || 'Nexus',
         vlanId,
         ipWan,
         gateway,
@@ -251,7 +261,11 @@ export default function TechnicalActivationPage() {
       setInventoryRevision((rev) => rev + 1)
       reloadQueue()
       setReloadNonce((n) => n + 1)
-      showToast(`Circuit ${res.orderId} commissioned successfully as Account ${res.accountId}! Hardware marked ASSIGNED.`)
+      showToast(
+        REVIEW1_API_MODE
+          ? `Circuit ${res.orderId} commissioned successfully as Account ${res.accountId}!`
+          : `Circuit ${res.orderId} commissioned successfully as Account ${res.accountId}! Hardware marked ASSIGNED.`
+      )
     } catch (err) {
       setIsSubmitting(false)
       showToast(err?.message || 'Commissioning sequence encountered an error. Please retry.', 'error')
@@ -259,18 +273,19 @@ export default function TechnicalActivationPage() {
   }
 
   const filteredOrders = useMemo(() => {
+    const q = searchQuery.toLowerCase()
     return activationQueue.filter((order) => {
       const matchQuery =
-        order.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.installationAddress.toLowerCase().includes(searchQuery.toLowerCase())
+        (order.orderId || '').toLowerCase().includes(q) ||
+        (order.customerName || '').toLowerCase().includes(q) ||
+        (order.installationAddress || '').toLowerCase().includes(q)
       const matchFilter = serviceFilter === 'ALL' || order.serviceType === serviceFilter
       return matchQuery && matchFilter
     })
   }, [activationQueue, searchQuery, serviceFilter])
 
   return (
-    <TechnicalLayout activeNavId="activations" toast={toast}>
+    <TechnicalLayout activeNavId="activations" apiMode={REVIEW1_API_MODE} toast={toast}>
 
       {activatedResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
@@ -292,8 +307,18 @@ export default function TechnicalActivationPage() {
             <div className="mt-5 space-y-3">
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-center">
                 <div className="text-xs font-semibold text-slate-500">Generated Subscriber Account ID (16 Chars)</div>
-                <div className="mt-1 font-mono text-2xl font-black tracking-wider text-brand-accent">
-                  {activatedResult.accountId}
+                <div className="mt-1 flex items-center justify-center gap-2">
+                  <span className="font-mono text-2xl font-black tracking-wider text-brand-accent">
+                    {activatedResult.accountId}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(activatedResult.accountId)}
+                    className="rounded-lg border border-indigo-200 bg-white p-1.5 text-slate-500 hover:text-indigo-700 cursor-pointer"
+                    title="Copy Account ID"
+                  >
+                    <Copy size={14} />
+                  </button>
                 </div>
                 <div className="mt-1 text-[11px] text-slate-500">
                   Bound to Order #{activatedResult.orderId} &bull; {activatedResult.district || 'Core Region'} (City {activatedResult.cityCode})
@@ -307,45 +332,59 @@ export default function TechnicalActivationPage() {
                   <div className="text-[11px] text-slate-500">{activatedResult.serviceTitle}</div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assigned CPE / ONT</div>
-                  <div className="mt-1 font-mono text-[11px] font-bold text-slate-700">
-                    SN: {activatedResult.assignedHardware.serialNumber}
+                {REVIEW1_API_MODE ? (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Next Handoff</div>
+                    <div className="mt-1 text-[11px] font-bold text-navy">Accounts / Billing</div>
+                    <div className="text-[11px] text-slate-500">
+                      Sign out and log in as <code>billing.demo</code> to invoice <code>{activatedResult.accountId}</code>.
+                    </div>
                   </div>
-                  <div className="font-mono text-[10px] text-slate-500">
-                    MAC: {activatedResult.assignedHardware.macAddress}
+                ) : (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assigned CPE / ONT</div>
+                    <div className="mt-1 font-mono text-[11px] font-bold text-slate-700">
+                      SN: {activatedResult.assignedHardware.serialNumber}
+                    </div>
+                    <div className="font-mono text-[10px] text-slate-500">
+                      MAC: {activatedResult.assignedHardware.macAddress}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Commissioning Sign-off</div>
-                <div className="mt-1 flex items-center justify-between text-slate-700">
-                  <span>Signatory: <strong>{activatedResult.handoverSignatory}</strong></span>
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <ShieldCheck size={13} /> SLA Active (99.98%)
-                  </span>
+              {!REVIEW1_API_MODE && (
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Commissioning Sign-off</div>
+                  <div className="mt-1 flex items-center justify-between text-slate-700">
+                    <span>Signatory: <strong>{activatedResult.handoverSignatory || signatoryName}</strong></span>
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <ShieldCheck size={13} /> SLA Active (99.98%)
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="mt-6 flex flex-wrap items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setActivatedResult(null)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Close Dialog
               </button>
-              <Link
-                to="/accounts/billing"
-                className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-md"
-              >
-                Proceed to Page 7: Billing &amp; Invoicing &rarr;
-              </Link>
+              {!REVIEW1_API_MODE && (
+                <Link
+                  to="/accounts/billing"
+                  className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-md"
+                >
+                  Open Billing &amp; Invoicing &rarr;
+                </Link>
+              )}
               <Link
                 to="/"
-                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-bold text-brand-soft hover:bg-indigo-100 transition"
+                className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-md"
               >
                 Verify in Public Tracking Portal &rarr;
               </Link>
@@ -364,7 +403,7 @@ export default function TechnicalActivationPage() {
                   <span>Outside Plant Survey</span>
                 </Link>
                 <ChevronRight size={12} />
-                <span className="font-bold text-slate-700">Page 6: Terminal &amp; Circuit Commissioning</span>
+                <span className="font-bold text-slate-700">Circuit Activation &amp; Commissioning</span>
                 {selectedOrder && (
                   <>
                     <ChevronRight size={12} />
@@ -378,17 +417,21 @@ export default function TechnicalActivationPage() {
                 Terminal Provisioning &amp; Circuit Activation Engine
               </h1>
               <p className="mt-1 text-xs text-slate-500">
-                Assign optical CPE/ONT hardware by Serial/MAC, record field sign-off diagnostic, and activate 16-character Account ID.
+                {REVIEW1_API_MODE
+                  ? 'Activate survey-approved (Feasible) orders and issue the 16-character Subscriber Account ID.'
+                  : 'Assign optical CPE/ONT hardware by Serial/MAC, record field sign-off diagnostic, and activate 16-character Account ID.'}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to="/retail/orders"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-              >
-                <ArrowLeft size={13} /> Back to Orders List
-              </Link>
+              {!REVIEW1_API_MODE && (
+                <Link
+                  to="/retail/orders"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  <ArrowLeft size={13} /> Back to Orders List
+                </Link>
+              )}
               <Link
                 to="/technical/surveys"
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
@@ -437,12 +480,14 @@ export default function TechnicalActivationPage() {
                 )}
               </p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <Link
-                  to="/retail/orders"
-                  className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
-                >
-                  <ArrowLeft size={14} /> Back to Orders List
-                </Link>
+                {!REVIEW1_API_MODE && (
+                  <Link
+                    to="/retail/orders"
+                    className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
+                  >
+                    <ArrowLeft size={14} /> Back to Orders List
+                  </Link>
+                )}
                 <Link
                   to="/technical/surveys"
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
@@ -539,9 +584,15 @@ export default function TechnicalActivationPage() {
                             <span className="font-mono text-xs font-black text-brand-accent">
                               #{order.orderId}
                             </span>
-                            <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">
-                              <Clock size={10} /> {order.slaRemainingMinutes}m SLA
-                            </span>
+                            {REVIEW1_API_MODE ? (
+                              <span className="rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[9px] font-black text-indigo-700">
+                                City {order.cityCode}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">
+                                <Clock size={10} /> {order.slaRemainingMinutes}m SLA
+                              </span>
+                            )}
                           </div>
 
                           <div className="mt-1 text-xs font-extrabold text-navy truncate">
@@ -550,7 +601,7 @@ export default function TechnicalActivationPage() {
                           <div className="text-[11px] text-slate-500">{order.serviceTitle}</div>
 
                           <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-1.5 text-[10px] text-slate-400">
-                            <span>Port #{order.reservedPort} &bull; {order.distanceMeters}m</span>
+                            <span>{REVIEW1_API_MODE ? order.serviceType : `Port #${order.reservedPort} • ${order.distanceMeters}m`}</span>
                             <span className="font-bold text-emerald-600">Survey Approved</span>
                           </div>
                         </div>
@@ -561,29 +612,55 @@ export default function TechnicalActivationPage() {
               </div>
 
               {selectedOrder && (
-                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                  <div className="text-[11px] font-extrabold text-navy uppercase tracking-wider">
-                    Target Circuit Infrastructure
+                REVIEW1_API_MODE ? (
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <div className="text-[11px] font-extrabold text-navy uppercase tracking-wider">
+                      Selected Order Summary
+                    </div>
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">Customer:</span>
+                        <span className="font-bold text-slate-800 truncate max-w-[160px]">{selectedOrder.customerName}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">Plan:</span>
+                        <span className="font-bold text-slate-800">{selectedOrder.planName || selectedOrder.serviceTitle}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">City Code:</span>
+                        <span className="font-mono font-bold text-indigo-700">{selectedOrder.cityCode}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Plan Fee:</span>
+                        <span className="font-mono font-bold text-slate-800">${Number(selectedOrder.planPriceUSD || 0).toFixed(2)} USD</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-2 space-y-2 text-xs">
-                    <div className="flex justify-between border-b border-indigo-100/60 pb-1">
-                      <span className="text-slate-500">Distribution ODF:</span>
-                      <span className="font-bold text-slate-700">{selectedOrder.odfName}</span>
+                ) : (
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <div className="text-[11px] font-extrabold text-navy uppercase tracking-wider">
+                      Target Circuit Infrastructure
                     </div>
-                    <div className="flex justify-between border-b border-indigo-100/60 pb-1">
-                      <span className="text-slate-500">Physical Splitter Port:</span>
-                      <span className="font-mono font-bold text-emerald-700">Port #0{selectedOrder.reservedPort} (Locked)</span>
-                    </div>
-                    <div className="flex justify-between border-b border-indigo-100/60 pb-1">
-                      <span className="text-slate-500">Conduit Pathway:</span>
-                      <span className="font-medium text-slate-700 truncate max-w-[150px]">{selectedOrder.conduitType}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Survey Rx Attenuation:</span>
-                      <span className="font-mono font-bold text-slate-800">{selectedOrder.surveyRxDbm} dBm</span>
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">Distribution ODF:</span>
+                        <span className="font-bold text-slate-700">{selectedOrder.odfName}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">Physical Splitter Port:</span>
+                        <span className="font-mono font-bold text-emerald-700">Port #0{selectedOrder.reservedPort} (Locked)</span>
+                      </div>
+                      <div className="flex justify-between border-b border-indigo-100/60 pb-1">
+                        <span className="text-slate-500">Conduit Pathway:</span>
+                        <span className="font-medium text-slate-700 truncate max-w-[150px]">{selectedOrder.conduitType}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Survey Rx Attenuation:</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedOrder.surveyRxDbm} dBm</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )
               )}
             </div>
 
@@ -597,18 +674,24 @@ export default function TechnicalActivationPage() {
                     Select an Order to Begin Provisioning
                   </h2>
                   <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                    Choose a survey-approved circuit order from the Provisioning Queue on the left to assign CPE hardware and generate an Account ID, or return to the Orders List.
+                    {REVIEW1_API_MODE
+                      ? 'Choose a survey-approved (Feasible) order from the Provisioning Queue on the left to create its connection and issue the 16-character Account ID, or return to the Survey Queue.'
+                      : 'Choose a survey-approved circuit order from the Provisioning Queue on the left to assign CPE hardware and generate an Account ID, or return to the Orders List.'}
                   </p>
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                    <Link
-                      to="/retail/orders"
-                      className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
-                    >
-                      <ArrowLeft size={14} /> Back to Orders List
-                    </Link>
+                    {!REVIEW1_API_MODE && (
+                      <Link
+                        to="/retail/orders"
+                        className="btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
+                      >
+                        <ArrowLeft size={14} /> Back to Orders List
+                      </Link>
+                    )}
                     <Link
                       to="/technical/surveys"
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                      className={REVIEW1_API_MODE
+                        ? 'btn-primary !px-5 !py-2.5 !text-xs font-bold shadow-sm inline-flex items-center gap-1.5'
+                        : 'rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition'}
                     >
                       Back to Survey Queue
                     </Link>
@@ -619,6 +702,60 @@ export default function TechnicalActivationPage() {
               <>
 
             <div className="lg:col-span-5 space-y-4">
+              {REVIEW1_API_MODE ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-brand-soft">
+                        <Barcode size={16} />
+                      </span>
+                      <div>
+                        <h2 className="text-sm font-extrabold text-navy">
+                          Review 1 Connection Provisioning
+                        </h2>
+                        <p className="text-[11px] text-slate-400">
+                          Backend activates the circuit and issues the 16-char Account ID
+                        </p>
+                      </div>
+                    </div>
+                    <OrderStatusBadge status={selectedOrder.status} />
+                  </div>
+
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3.5 text-xs text-sky-900 space-y-1">
+                    <div className="font-bold">Hardware Inventory Binding Outside Review 1 Scope</div>
+                    <p className="text-[11px] leading-relaxed text-sky-800">
+                      Review 1 backend commissions feasible orders directly via <span className="font-mono font-semibold">POST /api/orders/{selectedOrder.orderId}/connection</span> without requiring warehouse Serial/MAC inventory assignment.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Order Audit History
+                    </span>
+                    {Array.isArray(selectedOrder.history) && selectedOrder.history.length > 0 ? (
+                      <div className="space-y-2">
+                        {selectedOrder.history.map((entry, idx) => (
+                          <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 text-xs">
+                            <div className="flex items-center justify-between font-bold text-slate-800">
+                              <span>{entry.status}</span>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                {entry.at ? new Date(entry.at).toLocaleString() : ''}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-slate-600">
+                              {entry.actor}{entry.note ? ` · ${entry.note}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">
+                        No history entries loaded yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
@@ -783,129 +920,167 @@ export default function TechnicalActivationPage() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
 
             <div className="lg:col-span-4 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                      <Activity size={16} />
-                    </span>
-                    <h2 className="text-sm font-extrabold text-navy">
-                      Field Diagnostic &amp; Acceptance
-                    </h2>
-                  </div>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">
-                    SLA PASSED
-                  </span>
-                </div>
-
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-700">Actual Rx Optical Power</div>
-                      <div className="text-[10px] text-slate-400">Class B+ Standard (-28 dBm limit)</div>
+              {REVIEW1_API_MODE ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                        Account ID Generator (16 Chars)
+                      </span>
+                      <span className="rounded bg-indigo-100 px-2 py-0.5 text-[9px] font-black text-indigo-800">
+                        BACKEND ISSUED
+                      </span>
                     </div>
-                    <span className="font-mono text-sm font-black text-emerald-600">
-                      {rxPower} dBm
-                    </span>
-                  </div>
 
-                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-700">Gateway Roundtrip Latency</div>
-                      <div className="text-[10px] text-slate-400">Target Core &lt; 2.0ms</div>
+                    <div className="mt-2 flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-3.5 py-2.5">
+                      <span className="font-mono text-base font-black tracking-wider text-navy">
+                        {calculatedAccountId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyAccountId}
+                        className="cursor-pointer text-slate-400 hover:text-brand-accent transition"
+                        title="Copy Account ID"
+                      >
+                        {copiedAccount ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                      </button>
                     </div>
-                    <span className="font-mono text-sm font-black text-emerald-600">
-                      {pingLatency} ms
-                    </span>
+                    <div className="mt-1.5 text-[10px] text-slate-500 flex items-center gap-1">
+                      <ShieldCheck size={12} className="text-brand-accent" />
+                      Format: [Prefix][CityCode 3-digit][12-digit Sequence]
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-700">Symmetrical Bandwidth</div>
-                      <div className="text-[10px] text-slate-400">Committed Info Rate (CIR)</div>
-                    </div>
-                    <span className="font-mono text-xs font-black text-slate-800">
-                      {throughput}
-                    </span>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-[11px] text-slate-600 leading-relaxed">
+                    Optical power telemetry (dBm), OLT throughput tests, and signed acceptance protocol PDF storage belong to post-Review 1 commissioning.
                   </div>
                 </div>
-
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <div className="text-xs font-bold text-slate-700 mb-2">
-                    Handover Protocol &amp; Sign-off Dossier
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                        <Activity size={16} />
+                      </span>
+                      <h2 className="text-sm font-extrabold text-navy">
+                        Field Diagnostic &amp; Acceptance
+                      </h2>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">
+                      SLA PASSED
+                    </span>
                   </div>
 
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                        Client Authorized Signatory
-                      </label>
-                      <input
-                        type="text"
-                        value={signatoryName}
-                        onChange={(e) => setSignatoryName(e.target.value)}
-                        placeholder="e.g. Nguyen Van An (IT Director)"
-                        className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 outline-none focus:border-brand-soft"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                        Signatory National ID / CCCD
-                      </label>
-                      <input
-                        type="text"
-                        value={signatoryNationalId}
-                        onChange={(e) => setSignatoryNationalId(e.target.value)}
-                        placeholder="12-digit National ID"
-                        className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs font-mono text-slate-800 outline-none focus:border-brand-soft"
-                      />
-                    </div>
-
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700">
-                        <UploadCloud size={16} className="text-brand-soft" />
-                        Signed Acceptance Protocol Attached
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-700">Actual Rx Optical Power</div>
+                        <div className="text-[10px] text-slate-400">Class B+ Standard (-28 dBm limit)</div>
                       </div>
-                      <div className="mt-1 text-[10px] text-slate-400">
-                        Handover_Protocol_{selectedOrder.orderId}_Signed.pdf (1.4 MB) &bull; Verified
+                      <span className="font-mono text-sm font-black text-emerald-600">
+                        {rxPower} dBm
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-700">Gateway Roundtrip Latency</div>
+                        <div className="text-[10px] text-slate-400">Target Core &lt; 2.0ms</div>
+                      </div>
+                      <span className="font-mono text-sm font-black text-emerald-600">
+                        {pingLatency} ms
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-700">Symmetrical Bandwidth</div>
+                        <div className="text-[10px] text-slate-400">Committed Info Rate (CIR)</div>
+                      </div>
+                      <span className="font-mono text-xs font-black text-slate-800">
+                        {throughput}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 border-t border-slate-100 pt-3">
+                    <div className="text-xs font-bold text-slate-700 mb-2">
+                      Handover Protocol &amp; Sign-off Dossier
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          Client Authorized Signatory
+                        </label>
+                        <input
+                          type="text"
+                          value={signatoryName}
+                          onChange={(e) => setSignatoryName(e.target.value)}
+                          placeholder="e.g. Nguyen Van An (IT Director)"
+                          className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs text-slate-800 outline-none focus:border-brand-soft"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          Signatory National ID / CCCD
+                        </label>
+                        <input
+                          type="text"
+                          value={signatoryNationalId}
+                          onChange={(e) => setSignatoryNationalId(e.target.value)}
+                          placeholder="12-digit National ID"
+                          className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs font-mono text-slate-800 outline-none focus:border-brand-soft"
+                        />
+                      </div>
+
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700">
+                          <UploadCloud size={16} className="text-brand-soft" />
+                          Signed Acceptance Protocol Attached
+                        </div>
+                        <div className="mt-1 text-[10px] text-slate-400">
+                          Handover_Protocol_{selectedOrder.orderId}_Signed.pdf (1.4 MB) &bull; Verified
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                      Account ID Generator (16 Chars)
-                    </span>
-                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-800">
-                      INVARIANTS OK
-                    </span>
-                  </div>
+                  <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                        Account ID Generator (16 Chars)
+                      </span>
+                      <span className="rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-800">
+                        INVARIANTS OK
+                      </span>
+                    </div>
 
-                  <div className="mt-2 flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-3.5 py-2.5">
-                    <span className="font-mono text-base font-black tracking-wider text-navy">
-                      {calculatedAccountId}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyAccountId}
-                      className="cursor-pointer text-slate-400 hover:text-brand-accent transition"
-                      title="Copy Account ID"
-                    >
-                      {copiedAccount ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
-                    </button>
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1">
-                    <ShieldCheck size={12} className="text-brand-accent" />
-                    Format: [Prefix][CityCode 3-digit][12-digit Sequence]
+                    <div className="mt-2 flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-3.5 py-2.5">
+                      <span className="font-mono text-base font-black tracking-wider text-navy">
+                        {calculatedAccountId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyAccountId}
+                        className="cursor-pointer text-slate-400 hover:text-brand-accent transition"
+                        title="Copy Account ID"
+                      >
+                        {copiedAccount ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                      </button>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1">
+                      <ShieldCheck size={12} className="text-brand-accent" />
+                      Format: [Prefix][CityCode 3-digit][12-digit Sequence]
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between text-xs mb-3">
@@ -951,22 +1126,24 @@ export default function TechnicalActivationPage() {
                     )}
                   </button>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => showToast('Testing dossier saved as technical draft.')}
-                      className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                    >
-                      Save Draft
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => showToast('Acceptance Protocol dispatched to printer.')}
-                      className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                    >
-                      Print Protocol
-                    </button>
-                  </div>
+                  {!REVIEW1_API_MODE && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => showToast('Testing dossier saved as technical draft.')}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Save Draft
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => showToast('Acceptance Protocol dispatched to printer.')}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-center text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Print Protocol
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

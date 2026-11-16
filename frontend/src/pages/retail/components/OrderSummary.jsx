@@ -1,5 +1,6 @@
 import { DollarSign, ShieldCheck, Copy, Check, Send, Save, CircleAlert, AlertTriangle } from 'lucide-react'
 import { STATUTORY_TAX_RATE_PERCENT } from '../../../services/taxConfig'
+import { REVIEW1_API_MODE } from '../../../services/review1Api'
 
 export default function OrderSummary({
   financialCalculations,
@@ -7,6 +8,7 @@ export default function OrderSummary({
   bulkDiscountPercent,
   handleFinalSubmit,
   handleSaveDraft,
+  handleSaveRequest,
   copiedOrderId,
   handleCopyOrderId,
   canSubmit,
@@ -15,6 +17,8 @@ export default function OrderSummary({
   submitError = '',
   validationChecklist = [],
   onChecklistStepClick,
+  apiMode = REVIEW1_API_MODE,
+  planPriceUSD = null,
 }) {
   const {
     monthlyBillingSubtotal,
@@ -26,65 +30,90 @@ export default function OrderSummary({
     installationFee,
     grandTotal,
   } = financialCalculations
+  const effectivePlanPrice = Number(planPriceUSD ?? monthlyBillingSubtotal ?? 0)
 
   return (
     <div className="sticky top-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
       <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
         <div>
           <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider block">
-            ESTIMATED SETTLEMENT
+            {apiMode ? 'REVIEW 1 BILLING PREVIEW' : 'ESTIMATED SETTLEMENT'}
           </span>
-          <h3 className="text-base font-black text-slate-900 mt-0.5">Order Invoice Summary</h3>
+          <h3 className="text-base font-black text-slate-900 mt-0.5">
+            {apiMode ? 'Order Billing Summary' : 'Order Invoice Summary'}
+          </h3>
         </div>
         <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
           <span className="font-mono text-xs font-bold text-indigo-600">{generatedOrderId}</span>
-          <button
-            type="button"
-            onClick={handleCopyOrderId}
-            className="text-slate-400 hover:text-slate-600 cursor-pointer"
-            title="Copy Order ID"
-          >
-            {copiedOrderId ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-          </button>
+          {!apiMode && (
+            <button
+              type="button"
+              onClick={handleCopyOrderId}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Copy Order ID"
+            >
+              {copiedOrderId ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="space-y-2 text-xs">
-        <div className="flex justify-between">
-          <span className="text-slate-500">Monthly Recurring Charge (MRC):</span>
-          <span className="font-mono font-semibold text-slate-800">${monthlyBillingSubtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">{STATUTORY_TAX_RATE_PERCENT}% Statutory Telecom Tax:</span>
-          <span className="font-mono font-semibold text-indigo-600">+${telecomTax.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Initial Hardware Deposit:</span>
-          <span className="font-mono font-semibold text-slate-800">${depositAmount.toFixed(2)}</span>
-        </div>
-        {advancePaymentAmount > 0 && (
+      {apiMode ? (
+        <div className="space-y-2.5 text-xs">
           <div className="flex justify-between">
-            <span className="text-slate-500">Advance Plan Payment:</span>
-            <span className="font-mono font-semibold text-slate-800">${advancePaymentAmount.toFixed(2)}</span>
+            <span className="text-slate-500">Selected Plan Price (Plan.Price):</span>
+            <span className="font-mono font-semibold text-slate-800">${effectivePlanPrice.toFixed(2)} USD</span>
           </div>
-        )}
-        <div className="flex justify-between">
-          <span className="text-slate-500">One-time Installation Fee:</span>
-          <span className="font-mono font-semibold text-slate-800">${installationFee.toFixed(2)}</span>
-        </div>
-
-        {bulkDiscountPercent > 0 && (
-          <div className="flex justify-between text-rose-600 font-bold bg-rose-50 p-2 rounded-lg border border-rose-100">
-            <span>Bulk Scheme ({bulkDiscountPercent}% on Deposit/Advance):</span>
-            <span className="font-mono">-${bulkDiscountAmount.toFixed(2)}</span>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Billing Trigger:</span>
+            <span className="font-semibold text-slate-700">After Technical Activation</span>
           </div>
-        )}
-
-        <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
-          <span className="text-xs font-bold text-slate-900">Total First Payment:</span>
-          <span className="text-xl font-black text-indigo-600 font-mono">${grandTotal.toFixed(2)}</span>
+          <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
+            <span className="text-xs font-bold text-slate-900">Review 1 Billable Total:</span>
+            <span className="text-xl font-black text-indigo-600 font-mono">${effectivePlanPrice.toFixed(2)}</span>
+          </div>
+          <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-2.5 text-[11px] leading-relaxed text-sky-900">
+            Accounts will invoice <strong>${effectivePlanPrice.toFixed(2)} USD</strong> on the issued Account ID. Security deposits, equipment fees, and {STATUTORY_TAX_RATE_PERCENT}% tax breakdown belong to post-Review 1 billing.
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Monthly Recurring Charge (MRC):</span>
+            <span className="font-mono font-semibold text-slate-800">${monthlyBillingSubtotal.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">{STATUTORY_TAX_RATE_PERCENT}% Statutory Telecom Tax:</span>
+            <span className="font-mono font-semibold text-indigo-600">+${telecomTax.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Initial Hardware Deposit:</span>
+            <span className="font-mono font-semibold text-slate-800">${depositAmount.toFixed(2)}</span>
+          </div>
+          {advancePaymentAmount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">Advance Plan Payment:</span>
+              <span className="font-mono font-semibold text-slate-800">${advancePaymentAmount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-slate-500">One-time Installation Fee:</span>
+            <span className="font-mono font-semibold text-slate-800">${installationFee.toFixed(2)}</span>
+          </div>
+
+          {bulkDiscountPercent > 0 && (
+            <div className="flex justify-between text-rose-600 font-bold bg-rose-50 p-2 rounded-lg border border-rose-100">
+              <span>Bulk Scheme ({bulkDiscountPercent}% on Deposit/Advance):</span>
+              <span className="font-mono">-${bulkDiscountAmount.toFixed(2)}</span>
+            </div>
+          )}
+
+          <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
+            <span className="text-xs font-bold text-slate-900">Total First Payment:</span>
+            <span className="text-xl font-black text-indigo-600 font-mono">${grandTotal.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
 
       {validationChecklist.length > 0 && (
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-3 space-y-1.5">
@@ -133,6 +162,22 @@ export default function OrderSummary({
           <Send size={13} />
           <span>{isSubmitting ? 'Saving Files & Order...' : 'Create & Provision Order'}</span>
         </button>
+
+        {handleSaveRequest && (
+          <button
+            type="button"
+            disabled={!canSubmit || isSubmitting}
+            onClick={handleSaveRequest}
+            className={`w-full flex items-center justify-center gap-2 rounded-xl border py-2.5 text-xs font-bold transition ${
+              canSubmit && !isSubmitting
+                ? 'border-indigo-200 bg-indigo-50/80 text-indigo-700 hover:bg-indigo-100 cursor-pointer'
+                : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            <Save size={13} />
+            <span>{isSubmitting ? 'Saving Request...' : 'Save Request (Awaiting Confirmation)'}</span>
+          </button>
+        )}
 
         {handleSaveDraft && (
           <button

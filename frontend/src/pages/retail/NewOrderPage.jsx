@@ -42,6 +42,10 @@ import {
   fetchCitiesApi,
   fetchCustomersApi,
   fetchPlansApi,
+  createCustomerApi,
+  fetchRequestsApi,
+  createRequestApi,
+  confirmRequestApi,
 } from '../../services/review1Api'
 
 const CITIES = [
@@ -130,6 +134,14 @@ export default function NewOrderPage() {
     () => (REVIEW1_API_MODE ? fetchPlansApi() : Promise.resolve(fetchPlans({ activeOnly: true }))),
     []
   )
+  const {
+    data: pendingRequestsData,
+    reload: reloadPendingRequests,
+  } = useAsyncResource(
+    () => (REVIEW1_API_MODE ? fetchRequestsApi() : Promise.resolve([])),
+    []
+  )
+  const pendingRequests = pendingRequestsData || []
   const [selectedConnectionType, setSelectedConnectionType] = useState('BROADBAND')
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [includePoESwitch, setIncludePoESwitch] = useState(false)
@@ -164,7 +176,7 @@ export default function NewOrderPage() {
   const [addressProofFile, setAddressProofFile] = useState(null)
   const [hasUploadedNationalId, setHasUploadedNationalId] = useState(false)
   const [hasUploadedAddressProof, setHasUploadedAddressProof] = useState(false)
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
+  const [agreedToTerms, setAgreedToTerms] = useState(REVIEW1_API_MODE)
   const [odnCheckResult, setOdnCheckResult] = useState(null)
   const [isCheckingODN, setIsCheckingODN] = useState(false)
   const [depositMethod, setDepositMethod] = useState('CASH')
@@ -177,6 +189,7 @@ export default function NewOrderPage() {
   const [copiedOrderId, setCopiedOrderId] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [requestSavedNotice, setRequestSavedNotice] = useState('')
   const odnTimerRef = useRef(null)
   const copyTimerRef = useRef(null)
   const latestFilesRef = useRef({ nationalIdFile: null, addressProofFile: null })
@@ -333,10 +346,18 @@ export default function NewOrderPage() {
   function validateStep1() {
     const errors = {}
     if (!customerName.trim() || customerName.trim().length < 2) errors.customerName = 'Subscriber legal name is required.'
-    if (!taxId.trim() || taxId.trim().length < 5) errors.taxId = 'Valid Tax ID (min 5 chars) is required.'
-    if (!representativeName.trim() || representativeName.trim().length < 2) errors.representativeName = 'Authorized representative name is required.'
-    if (!customerPhone.trim() || customerPhone.trim().length < 8) errors.customerPhone = 'Valid contact phone is required.'
-    if (!customerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) errors.customerEmail = 'Valid billing email is required.'
+    if (REVIEW1_API_MODE) {
+      const digits = customerPhone.replace(/[^\d]/g, '')
+      if (digits.length < 7 || digits.length > 15) errors.customerPhone = 'Valid phone (7-15 digits) is required.'
+      if (customerEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+        errors.customerEmail = 'Invalid email format.'
+      }
+    } else {
+      if (!taxId.trim() || taxId.trim().length < 5) errors.taxId = 'Valid Tax ID (min 5 chars) is required.'
+      if (!representativeName.trim() || representativeName.trim().length < 2) errors.representativeName = 'Authorized representative name is required.'
+      if (!customerPhone.trim() || customerPhone.trim().length < 8) errors.customerPhone = 'Valid contact phone is required.'
+      if (!customerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) errors.customerEmail = 'Valid billing email is required.'
+    }
     if (!installationAddress.trim() || installationAddress.trim().length < 5) errors.installationAddress = 'Installation site address is required.'
     return errors
   }
@@ -369,7 +390,7 @@ export default function NewOrderPage() {
       }),
     [selectedConnectionType, hasLandlineBundle, landlineOption, existingLandlineNumber]
   )
-  const hasDialupLandlineRequirement = !isDialupSelected || dialupLandlineValidation.valid
+  const hasDialupLandlineRequirement = REVIEW1_API_MODE || !isDialupSelected || dialupLandlineValidation.valid
   const netDepositDue = REVIEW1_API_MODE ? 0 : Number(financialCalculations.netDepositAndAdvance || 0)
   const isDepositWaived = REVIEW1_API_MODE || netDepositDue <= 0
   const hasDepositCollection = REVIEW1_API_MODE || isDepositWaived || (Boolean(depositConfirmed) && Boolean(depositMethod))
@@ -389,37 +410,55 @@ export default function NewOrderPage() {
     agreedToTerms
   )
 
-  const validationChecklist = [
-    { id: 'customer', label: 'Subscriber Identification & Address', done: isStep1Complete, stepNum: 1 },
-    { id: 'plan', label: 'Active Tariff Plan Selected (Admin Catalog)', done: hasPlanSelected, stepNum: 2 },
-    ...(isDialupSelected
-      ? [
-          {
-            id: 'dialup-landline',
-            label: dialupLandlineValidation.valid
-              ? dialupLandlineValidation.mode === 'BUNDLE'
-                ? 'Dial-Up Landline: New PSTN Bundle (+$15/mo)'
-                : `Dial-Up Landline: Linked ${dialupLandlineValidation.existingLandlineNumber}`
-              : 'Dial-Up Prerequisite: Link Existing Landline or +$15/mo Bundle',
-            done: dialupLandlineValidation.valid,
-            stepNum: 2,
-          },
-        ]
-      : []),
-    { id: 'documents', label: 'CCCD & Address Verification Uploaded (2/2)', done: hasDocuments, stepNum: 4 },
-    { id: 'odn', label: 'ODN Route Feasibility Checked', done: hasOdnCheck, stepNum: 4 },
-    {
-      id: 'deposit',
-      label: isDepositWaived
-        ? 'Security Deposit Waived ($0.00 • 100% Bulk)'
-        : hasDepositCollection
-        ? `Deposit Confirmed ($${netDepositDue.toFixed(2)} • ${resolveDepositCollectionMethodLabel(depositMethod)})`
-        : `Collect Deposit ($${netDepositDue.toFixed(2)}) & Receipt (CN16)`,
-      done: hasDepositCollection,
-      stepNum: 4,
-    },
-    { id: 'terms', label: 'Terms of Service Agreed', done: Boolean(agreedToTerms), stepNum: 4 },
-  ]
+  const validationChecklist = REVIEW1_API_MODE
+    ? [
+        { id: 'customer', label: 'Subscriber Identification & Address', done: isStep1Complete, stepNum: 1 },
+        { id: 'plan', label: 'Active Tariff Plan Selected (Admin Catalog)', done: hasPlanSelected, stepNum: 2 },
+        ...(isDialupSelected
+          ? [
+              {
+                id: 'dialup-landline',
+                label: hasLandlineBundle
+                  ? 'Dial-Up Landline: Customer has Nexus landline'
+                  : 'Dial-Up Landline: Technical Survey will verify feasibility',
+                done: true,
+                stepNum: 2,
+              },
+            ]
+          : []),
+        { id: 'terms', label: 'Order Confirmation Checkbox Checked', done: Boolean(agreedToTerms), stepNum: 4 },
+      ]
+    : [
+        { id: 'customer', label: 'Subscriber Identification & Address', done: isStep1Complete, stepNum: 1 },
+        { id: 'plan', label: 'Active Tariff Plan Selected (Admin Catalog)', done: hasPlanSelected, stepNum: 2 },
+        ...(isDialupSelected
+          ? [
+              {
+                id: 'dialup-landline',
+                label: dialupLandlineValidation.valid
+                  ? dialupLandlineValidation.mode === 'BUNDLE'
+                    ? 'Dial-Up Landline: New PSTN Bundle (+$15/mo)'
+                    : `Dial-Up Landline: Linked ${dialupLandlineValidation.existingLandlineNumber}`
+                  : 'Dial-Up Prerequisite: Link Existing Landline or +$15/mo Bundle',
+                done: dialupLandlineValidation.valid,
+                stepNum: 2,
+              },
+            ]
+          : []),
+        { id: 'documents', label: 'CCCD & Address Verification Uploaded (2/2)', done: hasDocuments, stepNum: 4 },
+        { id: 'odn', label: 'ODN Route Feasibility Checked', done: hasOdnCheck, stepNum: 4 },
+        {
+          id: 'deposit',
+          label: isDepositWaived
+            ? 'Security Deposit Waived ($0.00 • 100% Bulk)'
+            : hasDepositCollection
+            ? `Deposit Confirmed ($${netDepositDue.toFixed(2)} • ${resolveDepositCollectionMethodLabel(depositMethod)})`
+            : `Collect Deposit ($${netDepositDue.toFixed(2)}) & Receipt (CN16)`,
+          done: hasDepositCollection,
+          stepNum: 4,
+        },
+        { id: 'terms', label: 'Terms of Service Agreed', done: Boolean(agreedToTerms), stepNum: 4 },
+      ]
 
   function handleNextStep() {
     if (currentStep === 1) {
@@ -427,7 +466,7 @@ export default function NewOrderPage() {
       setCustomerErrors(errors)
       if (Object.keys(errors).length > 0) return
     }
-    if (currentStep === 2 && isDialupSelected && !dialupLandlineValidation.valid) {
+    if (!REVIEW1_API_MODE && currentStep === 2 && isDialupSelected && !dialupLandlineValidation.valid) {
       setStep2LandlineTouched(true)
       return
     }
@@ -465,7 +504,9 @@ export default function NewOrderPage() {
         planPriceUSD: selectedPlan ? selectedPlan.priceUSD : 0,
         endpoints,
         bulkDiscountPercent,
-        hasLandlineBundle: isDialupSelected ? dialupLandlineValidation.hasLandlineBundle : false,
+        hasLandlineBundle: REVIEW1_API_MODE
+          ? (isDialupSelected && Boolean(hasLandlineBundle))
+          : (isDialupSelected ? dialupLandlineValidation.hasLandlineBundle : false),
         landlineOption: dialupLandlineValidation.mode,
         existingLandlineNumber: dialupLandlineValidation.existingLandlineNumber,
         paymentScheme: selectedPaymentScheme,
@@ -521,8 +562,60 @@ export default function NewOrderPage() {
     submitOrderWithStatus(ORDER_STATUS.DRAFT)
   }
 
+  async function handleSaveRequestOnly() {
+    if (isSubmitting || !canSubmit) return
+    setIsSubmitting(true)
+    setSubmitError('')
+    try {
+      let customerId = Number(selectedCustomerId)
+      if (!Number.isInteger(customerId) || customerId <= 0) {
+        const createdCustomer = await createCustomerApi({
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          installationAddress: installationAddress.trim(),
+          branchCode: selectedCity.code,
+          taxId: taxId.trim(),
+          customerEmail: customerEmail.trim(),
+          representativeName: representativeName.trim(),
+        })
+        customerId = Number(createdCustomer.backendId)
+        setSelectedCustomerId(createdCustomer.id)
+      }
+      const savedReq = await createRequestApi({
+        customerId,
+        planId: Number(selectedPlan?.backendId || selectedPlan?.id),
+        hasNexusLandline: isDialupSelected && Boolean(hasLandlineBundle),
+      })
+      setRequestSavedNotice(
+        `Request #${savedReq.id} saved for ${savedReq.customerName || customerName.trim()}. Click "Confirm Request #${savedReq.id}" below to generate its 11-char Order ID.`
+      )
+      reloadPendingRequests()
+    } catch (err) {
+      setSubmitError(err?.message || 'Unable to save service request.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleConfirmPendingRequest(requestId) {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setSubmitError('')
+    try {
+      const confirmed = await confirmRequestApi(requestId)
+      setCreatedOrder(confirmed)
+      setIsSuccessModalOpen(true)
+      reloadPendingRequests()
+      setOrderRefreshKey((prev) => prev + 1)
+    } catch (err) {
+      setSubmitError(err?.message || 'Unable to confirm request into order.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
-    <RetailLayout activeNavId="new-order">
+    <RetailLayout activeNavId="new-order" apiMode={REVIEW1_API_MODE}>
       {isSuccessModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
@@ -557,15 +650,25 @@ export default function NewOrderPage() {
               <div className="pt-2 border-t border-slate-200/70">
                 <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-1">16-Character Account ID</span>
                 <span className="font-mono text-xs font-semibold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-xs">
-                  Account ID will be issued upon Technical Activation (e.g. {createdOrder?.servicePrefix || 'B'}101000000000001)
+                  {REVIEW1_API_MODE
+                    ? 'Issued upon Technical Activation'
+                    : `Account ID will be issued upon Technical Activation (e.g. ${createdOrder?.servicePrefix || 'B'}101000000000001)`}
                 </span>
               </div>
+              {REVIEW1_API_MODE && createdOrder && (
+                <div className="pt-2 border-t border-slate-200/70 flex justify-between text-xs text-slate-600">
+                  <span>Billable Plan Fee:</span>
+                  <span className="font-mono font-bold text-indigo-700">
+                    ${Number(createdOrder.planPriceUSD || 0).toFixed(2)} USD
+                  </span>
+                </div>
+              )}
               {(createdOrder?.documents?.nationalId || createdOrder?.documents?.addressProof) && (
                 <div className="pt-2 border-t border-slate-200/70 text-[11px] font-semibold text-emerald-700">
                   Verification files persisted in browser IndexedDB storage for inspection &amp; download.
                 </div>
               )}
-              {createdOrder && (() => {
+              {!REVIEW1_API_MODE && createdOrder && (() => {
                 const depSummary = getOrderDepositSummary(createdOrder)
                 return (
                   <div className="pt-2 border-t border-slate-200/70 text-left rounded-lg bg-white p-2.5 border border-slate-200 space-y-1 text-[11px]">
@@ -603,7 +706,7 @@ export default function NewOrderPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {createdOrder && getOrderDepositSummary(createdOrder).isCollectedOrWaived && (
+              {!REVIEW1_API_MODE && createdOrder && getOrderDepositSummary(createdOrder).isCollectedOrWaived && (
                 <button
                   type="button"
                   onClick={() => {
@@ -667,7 +770,7 @@ export default function NewOrderPage() {
                 New Enterprise Subscription Provisioning
               </h1>
               <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 font-mono text-[11px] font-bold text-brand-soft">
-                {generatedOrderId}
+                {REVIEW1_API_MODE ? 'Review 1 Request' : generatedOrderId}
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
@@ -689,8 +792,8 @@ export default function NewOrderPage() {
           {[
             { num: 1, label: '1. Customer Info' },
             { num: 2, label: '2. Service & Tariff' },
-            { num: 3, label: '3. Bulk Scheme' },
-            { num: 4, label: '4. Docs, ODN & Deposit' },
+            { num: 3, label: REVIEW1_API_MODE ? '3. Bulk Reference' : '3. Bulk Scheme' },
+            { num: 4, label: REVIEW1_API_MODE ? '4. Review & Submit' : '4. Docs, ODN & Deposit' },
           ].map((step) => (
             <button
               key={step.num}
@@ -706,6 +809,21 @@ export default function NewOrderPage() {
             </button>
           ))}
         </div>
+        {requestSavedNotice && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center justify-between gap-3 text-xs text-emerald-900">
+            <div className="flex items-center gap-2.5 font-semibold">
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              <span>{requestSavedNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRequestSavedNotice('')}
+              className="text-[11px] font-bold text-emerald-700 hover:underline shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {submitError && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 flex items-start gap-3 text-xs text-rose-800">
             <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
@@ -753,6 +871,7 @@ export default function NewOrderPage() {
                 includePoESwitch={includePoESwitch}
                 setIncludePoESwitch={setIncludePoESwitch}
                 hasLandlineBundle={hasLandlineBundle}
+                setHasLandlineBundle={setHasLandlineBundle}
                 landlineOption={landlineOption}
                 onSelectLandlineOption={handleSelectLandlineOption}
                 existingLandlineNumber={existingLandlineNumber}
@@ -771,6 +890,7 @@ export default function NewOrderPage() {
                 paymentSchemes={PAYMENT_SCHEMES}
                 selectedPaymentScheme={selectedPaymentScheme}
                 setSelectedPaymentScheme={setSelectedPaymentScheme}
+                apiMode={REVIEW1_API_MODE}
               />
             )}
 
@@ -799,6 +919,7 @@ export default function NewOrderPage() {
                 setDepositReference={setDepositReference}
                 depositCollector={depositCollector}
                 setDepositCollector={setDepositCollector}
+                apiMode={REVIEW1_API_MODE}
               />
             )}
 
@@ -831,10 +952,11 @@ export default function NewOrderPage() {
           <div className="lg:col-span-4">
             <OrderSummary
               financialCalculations={financialCalculations}
-              generatedOrderId={generatedOrderId}
+              generatedOrderId={REVIEW1_API_MODE ? 'Assigned on confirm' : generatedOrderId}
               bulkDiscountPercent={bulkDiscountPercent}
               handleFinalSubmit={handleFinalSubmit}
-              handleSaveDraft={handleSaveDraft}
+              handleSaveDraft={REVIEW1_API_MODE ? null : handleSaveDraft}
+              handleSaveRequest={REVIEW1_API_MODE ? handleSaveRequestOnly : null}
               copiedOrderId={copiedOrderId}
               handleCopyOrderId={handleCopyOrderId}
               canSubmit={canSubmit}
@@ -843,9 +965,76 @@ export default function NewOrderPage() {
               submitError={submitError}
               validationChecklist={validationChecklist}
               onChecklistStepClick={setCurrentStep}
+              apiMode={REVIEW1_API_MODE}
+              planPriceUSD={selectedPlan ? selectedPlan.priceUSD : 0}
             />
           </div>
         </div>
+
+        {REVIEW1_API_MODE && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-sm font-extrabold text-navy">
+                  Service Requests Awaiting Confirmation ({pendingRequests.length})
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Saved requests wait here until Retail confirms them into Pending Orders (`B...` / `D...` / `T...`).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={reloadPendingRequests}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Refresh Requests
+              </button>
+            </div>
+
+            {pendingRequests.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                No requests awaiting confirmation. Use &ldquo;Save Request (Awaiting Confirmation)&rdquo; or &ldquo;Create &amp; Provision Order&rdquo;.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="border-b border-slate-100 bg-slate-50/70 font-semibold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Request ID</th>
+                      <th className="px-3 py-2">Customer</th>
+                      <th className="px-3 py-2">Plan</th>
+                      <th className="px-3 py-2">Price</th>
+                      <th className="px-3 py-2">Address</th>
+                      <th className="px-3 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {pendingRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50/60">
+                        <td className="px-3 py-2.5 font-mono font-bold text-indigo-700">#{req.id}</td>
+                        <td className="px-3 py-2.5 font-bold text-slate-900">{req.customerName}</td>
+                        <td className="px-3 py-2.5">{req.planName}</td>
+                        <td className="px-3 py-2.5 font-mono font-bold text-slate-800">${Number(req.price || 0).toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-slate-500">{req.address}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => handleConfirmPendingRequest(req.id)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-navy px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800 cursor-pointer disabled:opacity-50"
+                          >
+                            <CheckCircle2 size={12} />
+                            <span>Confirm Request #{req.id}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {printingReceiptData && (

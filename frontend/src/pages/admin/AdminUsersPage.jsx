@@ -36,6 +36,7 @@ const DEFAULT_HUB_OPTIONS = [
 const EMPTY_FORM = {
   fullName: '',
   email: '',
+  password: '',
   title: '',
   role: 'RETAIL',
   hubId: 'STORE-HN-001',
@@ -309,29 +310,49 @@ export default function AdminUsersPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Corporate Email</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {REVIEW1_API_MODE ? 'Username / Corporate Email' : 'Corporate Email'}
+                  </label>
                   <input
-                    type="email"
+                    type={REVIEW1_API_MODE ? 'text' : 'email'}
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="tuan.tm@nexus.vn"
+                    placeholder={REVIEW1_API_MODE ? 'e.g. retail.extra' : 'tuan.tm@nexus.vn'}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Job Title</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g. Optical Fiber Field Service Technician"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
-                />
-              </div>
+              {REVIEW1_API_MODE && modalMode === 'create' ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Initial Password (12–128 chars)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Minimum 12 characters"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Job Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="e.g. Optical Fiber Field Service Technician"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -574,7 +595,9 @@ export default function AdminUsersPage() {
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{emp.id}</td>
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900">{emp.fullName}</div>
-                        <div className="text-[11px] text-slate-400">{emp.email} &bull; {emp.title}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {emp.email}{emp.title ? ` • ${emp.title}` : ''}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span
@@ -622,37 +645,45 @@ export default function AdminUsersPage() {
                         <div className="font-mono text-[10px] text-slate-400">IP: {emp.lastLoginIp}</div>
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(emp)}
-                          className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer inline-flex items-center gap-1"
-                        >
-                          <Edit3 size={11} /> Edit
-                        </button>
-                        {emp.status === 'LOCKED' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleUnlock(emp.id, emp.fullName)}
-                            className="rounded-lg bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-rose-700 transition cursor-pointer inline-flex items-center gap-1"
-                          >
-                            <Unlock size={11} /> Unlock
-                          </button>
+                        {REVIEW1_API_MODE ? (
+                          <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-500">
+                            Active Session Account
+                          </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleStatus(emp.id, emp.fullName)}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-                          >
-                            {emp.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(emp)}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer inline-flex items-center gap-1"
+                            >
+                              <Edit3 size={11} /> Edit
+                            </button>
+                            {emp.status === 'LOCKED' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUnlock(emp.id, emp.fullName)}
+                                className="rounded-lg bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-rose-700 transition cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Unlock size={11} /> Unlock
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(emp.id, emp.fullName)}
+                                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                              >
+                                {emp.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleResetPassword(emp.id, emp.fullName)}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                            >
+                              Reset PW
+                            </button>
+                          </>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(emp.id, emp.fullName)}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-                        >
-                          Reset PW
-                        </button>
                       </td>
                     </tr>
                   ))

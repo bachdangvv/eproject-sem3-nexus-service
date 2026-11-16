@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Network, Phone, UserRound, Server } from 'lucide-react'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 const NAV = [
   { href: '#services', label: 'Services' },
@@ -46,7 +47,7 @@ export default function Header() {
             to="/login"
             className="hidden items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-1.5 text-xs font-bold text-brand-accent transition hover:bg-indigo-100 hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent sm:flex cursor-pointer"
           >
-            <Server size={14} /> Customer Portal / NOC
+            <Server size={14} /> {REVIEW1_API_MODE ? 'Staff Portal / NOC' : 'Customer Portal / NOC'}
           </Link>
           <Link
             to="/login"

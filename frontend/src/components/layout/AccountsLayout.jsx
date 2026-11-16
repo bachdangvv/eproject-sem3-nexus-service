@@ -8,18 +8,18 @@ import {
   FileSpreadsheet,
   Scale,
   Calendar,
-  Search,
-  Bell,
-  HelpCircle,
   CheckCircle2,
   AlertTriangle,
   Info,
 } from 'lucide-react'
 import BackgroundAtmosphere from '../common/BackgroundAtmosphere'
 import Footer from './Footer'
+import PortalHeaderSession from './PortalHeaderSession'
+import PortalTopbarActions from './PortalTopbarActions'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
 
 export const ACCOUNTS_NAV_ITEMS = [
-  { id: 'overview', label: 'Billing Overview', icon: LayoutGrid, path: '/coming-soon' },
+  { id: 'overview', label: 'Billing Overview', icon: LayoutGrid, path: '/accounts/overview' },
   { id: 'invoices', label: 'Invoices & Billing Charges', icon: Receipt, path: '/accounts/billing' },
   { id: 'cdr', label: 'CDR & Traffic Metering', icon: Activity, path: '/accounts/cdr' },
   { id: 'debts', label: 'Debt & Arrears Management', icon: ShieldAlert, path: '/accounts/debts' },
@@ -34,6 +34,7 @@ export default function AccountsLayout({
   children,
 }) {
   const navigate = useNavigate()
+  const isApiMode = apiMode || REVIEW1_API_MODE
 
   return (
     <div className="relative min-h-screen flex flex-col justify-between font-sans text-slate-800">
@@ -75,60 +76,31 @@ export default function AccountsLayout({
                   ACCOUNTS &amp; BILLING
                 </span>
                 <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-black text-brand-soft">
-                  DEMO LEDGER
+                  {isApiMode ? 'REVIEW 1 API' : 'DEMO LEDGER'}
                 </span>
               </div>
-              <div className="hidden lg:inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/60 px-2.5 py-0.5 text-[10px] font-bold text-indigo-800">
-                <Calendar size={11} className="text-brand-soft" />
-                <span>SAMPLE CYCLE: 01/10/2026 – 31/10/2026</span>
-              </div>
+              {!isApiMode && (
+                <div className="hidden lg:inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/60 px-2.5 py-0.5 text-[10px] font-bold text-indigo-800">
+                  <Calendar size={11} className="text-brand-soft" />
+                  <span>SAMPLE CYCLE: 01/10/2026 – 31/10/2026</span>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative hidden md:block w-72">
-              <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Account ID / Order ID / Invoice ID..."
-                defaultValue="B101000000000089"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-1.5 pr-3 pl-8 text-xs text-slate-700 outline-none transition focus:border-brand-soft focus:bg-white"
-              />
-            </div>
+            <PortalTopbarActions
+              portal="accounts"
+              isApiMode={isApiMode}
+              defaultSearchValue={isApiMode ? '' : 'B101000000000089'}
+            />
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Notifications"
-              >
-                <Bell size={14} />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white">
-                  2
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-                aria-label="Help"
-              >
-                <HelpCircle size={14} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-2.5 py-1">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-soft text-[10px] font-black text-white">
-                TH
-              </div>
-              <div className="hidden text-left sm:block">
-                <span className="block text-[9px] font-semibold text-slate-400 uppercase tracking-wider">
-                  KS. Tran Thu Ha
-                </span>
-                <span className="block text-xs font-bold text-navy">
-                  Billing &amp; Financial Lead
-                </span>
-              </div>
-            </div>
+            <PortalHeaderSession
+              fallbackInitials="TH"
+              fallbackTopLabel="KS. Tran Thu Ha"
+              fallbackBottomLabel="Billing & Financial Lead"
+              badgeColorClass="bg-brand-soft"
+            />
           </div>
         </div>
 
@@ -158,9 +130,9 @@ export default function AccountsLayout({
           <div className="hidden md:flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/90 px-3 py-1.5 font-mono text-xs font-bold text-slate-700">
               <span className="h-2 w-2 rounded-full bg-sky-500" />
-              {apiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
+              {isApiMode ? 'REVIEW 1' : 'LOCAL-DEMO'}
               <span className="text-[10px] font-sans font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                {apiMode ? 'API DATA' : 'MOCK DATA'}
+                {isApiMode ? 'API DATA' : 'MOCK DATA'}
               </span>
             </span>
           </div>

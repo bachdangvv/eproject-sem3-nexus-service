@@ -20,10 +20,17 @@ export async function submitApiSurveyCallback(phone) {
 }
 
 export async function approveApiSurvey(orderId, payload) {
+  const distanceOk =
+    typeof payload.distanceOk === 'boolean'
+      ? payload.distanceOk
+      : Number(payload.distanceMeters) <= 500 || payload.allowDistanceOverride === true
+  const serverAvailable =
+    typeof payload.serverAvailable === 'boolean' ? payload.serverAvailable : true
+
   const { data } = await apiClient.post(`/orders/${encodeURIComponent(orderId)}/assessment`, {
-    distanceOk: Number(payload.distanceMeters) <= 500 || payload.allowDistanceOverride === true,
-    serverAvailable: true,
-    landlineFeasible: payload.landlineFeasible ?? true,
+    distanceOk,
+    serverAvailable,
+    landlineFeasible: payload.landlineFeasible ?? null,
     note: payload.allowDistanceOverride
       ? `Senior NOC override: ${payload.overrideReason || 'approved technical override'}`
       : payload.note || 'Technical feasibility approved.',
@@ -32,10 +39,19 @@ export async function approveApiSurvey(orderId, payload) {
 }
 
 export async function rejectApiSurvey(orderId, reason, details = {}) {
+  const distanceOk =
+    typeof details.distanceOk === 'boolean'
+      ? details.distanceOk
+      : Number(details.distanceMeters) > 0
+      ? Number(details.distanceMeters) <= 500
+      : false
+  const serverAvailable =
+    typeof details.serverAvailable === 'boolean' ? details.serverAvailable : false
+
   const { data } = await apiClient.post(`/orders/${encodeURIComponent(orderId)}/assessment`, {
-    distanceOk: Number(details.distanceMeters) > 0 ? Number(details.distanceMeters) <= 500 : false,
-    serverAvailable: false,
-    landlineFeasible: details.landlineFeasible ?? false,
+    distanceOk,
+    serverAvailable,
+    landlineFeasible: details.landlineFeasible ?? null,
     note: reason || 'Technical assessment marked the order not feasible.',
   })
   return { success: true, status: 'NOT_FEASIBLE', reason, order: mapOrderFromApi(data) }

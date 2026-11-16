@@ -19,6 +19,7 @@ import {
   buildDepositReceiptNumber,
   resolveDepositCollectionMethodLabel,
 } from '../../../services/orderService'
+import { REVIEW1_API_MODE } from '../../../services/review1Api'
 
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
 const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
@@ -79,6 +80,7 @@ function DocumentUploadCard({
   onSelectFile,
   onRemoveFile,
   onDragChange,
+  optional = false,
 }) {
   return (
     <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 transition">
@@ -96,6 +98,10 @@ function DocumentUploadCard({
           {file ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
               <CheckCircle2 size={11} /> ATTACHED
+            </span>
+          ) : optional ? (
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+              POST-REVIEW 1
             </span>
           ) : (
             <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
@@ -234,6 +240,7 @@ export default function DocumentStep({
   setDepositReference,
   depositCollector = '',
   setDepositCollector,
+  apiMode = REVIEW1_API_MODE,
 }) {
   const [localNationalIdFile, setLocalNationalIdFile] = useState(null)
   const [localAddressProofFile, setLocalAddressProofFile] = useState(null)
@@ -336,15 +343,28 @@ export default function DocumentStep({
   return (
     <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
       <div className="border-b border-slate-100 pb-3">
-        <h3 className="text-base font-bold text-slate-900">Subscriber Verification &amp; Feasibility Check</h3>
+        <h3 className="text-base font-bold text-slate-900">
+          {apiMode ? 'Review & Request Confirmation' : 'Subscriber Verification & Feasibility Check'}
+        </h3>
         <p className="text-xs text-slate-500">
-          Upload Citizen ID (CCCD) and installation address verification documents (PDF, JPG, PNG &le; 10MB) and test ODN feasibility
+          {apiMode
+            ? 'Review your customer and plan details before saving a Retail Request or confirming a Pending Order.'
+            : 'Upload Citizen ID (CCCD) and installation address verification documents (PDF, JPG, PNG ≤ 10MB) and test ODN feasibility'}
         </p>
       </div>
 
+      {apiMode ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-xs text-sky-900 space-y-1.5">
+          <div className="font-bold">Review 1 API Scope Notice</div>
+          <p className="text-[11px] leading-relaxed text-sky-800">
+            Document KYC file storage, pre-survey GIS probing, and security deposit collection are deferred to post-Review 1 milestones. Save a Request or confirm directly into a Pending Order, then hand off to Technical ODN Survey.
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {documentSlots.map((slot) => (
-          <DocumentUploadCard key={slot.key} {...slot} />
+          <DocumentUploadCard key={slot.key} {...slot} optional={apiMode} />
         ))}
       </div>
 
@@ -514,6 +534,8 @@ export default function DocumentStep({
           </div>
         )}
       </div>
+        </>
+      )}
 
       <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 pt-2">
         <input
@@ -522,7 +544,11 @@ export default function DocumentStep({
           onChange={(e) => setAgreedToTerms(e.target.checked)}
           className="rounded border-slate-300 text-brand-soft focus:ring-brand-soft"
         />
-        <span>I confirm the subscriber CCCD and address verification documents and agree to Nexus Telecom Terms of Service.</span>
+        <span>
+          {apiMode
+            ? 'I confirm the subscriber profile and service plan details for Review 1 Request / Order submission.'
+            : 'I confirm the subscriber CCCD and address verification documents and agree to Nexus Telecom Terms of Service.'}
+        </span>
       </label>
     </div>
   )

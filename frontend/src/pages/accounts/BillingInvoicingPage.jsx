@@ -47,8 +47,13 @@ import {
 import PrintReceiptModal from '../../components/common/PrintReceiptModal'
 import AsyncStatePanel from '../../components/common/AsyncStatePanel'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
+import { REVIEW1_API_MODE } from '../../services/review1Api'
+import Review1BillingDesk from './Review1BillingDesk'
 
 export default function BillingInvoicingPage() {
+  if (REVIEW1_API_MODE) {
+    return <Review1BillingDesk />
+  }
   const navigate = useNavigate()
   const [activeMenu, setActiveMenu] = useState('invoices')
   const {

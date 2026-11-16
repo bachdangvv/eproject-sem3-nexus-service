@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BadgePercent, Send, LogIn, CircleCheck, Loader2 } from 'lucide-react'
+import { BadgePercent, Send, LogIn, CircleCheck, Info, Loader2 } from 'lucide-react'
 import surveyService from '../../services/surveyService'
 
 const PHONE_REGEX = /^0\d{9,10}$/
@@ -8,12 +8,14 @@ const PHONE_REGEX = /^0\d{9,10}$/
 export default function PromoSurveyBar() {
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [sent, setSent] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setSent(false)
+    setNotice('')
     const clean = phone.replace(/[\s.-]/g, '')
     if (!PHONE_REGEX.test(clean)) {
       setError('Please enter a valid phone number (e.g. 0912345678).')
@@ -22,7 +24,11 @@ export default function PromoSurveyBar() {
     setError('')
     setSubmitting(true)
     try {
-      await surveyService.requestSurveyCallback(clean)
+      const result = await surveyService.requestSurveyCallback(clean)
+      if (result && result.success === false) {
+        setNotice(result.message || 'Callback scheduling is deferred post-Review 1. Please contact 1800 8098 or sign in to Retail Portal.')
+        return
+      }
       setSent(true)
       setPhone('')
     } catch {
@@ -41,9 +47,9 @@ export default function PromoSurveyBar() {
             <span className="font-semibold text-slate-700">Nationwide Backbone</span>
           </div>
           <div className="mt-2 text-base font-extrabold text-navy">
-            Volume Discount: <span className="text-brand-accent">Up to 50% Off</span>
+            Volume Discount: <span className="text-brand-accent">Up to 100% Off</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-400">Complimentary enterprise GPON terminal installation</div>
+          <div className="mt-1 text-[11px] text-slate-400">Up to 100% bulk waiver on deposit &amp; advance for 50+ connections</div>
         </div>
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-brand-accent">
           <BadgePercent size={20} />
@@ -78,6 +84,11 @@ export default function PromoSurveyBar() {
         </div>
         <div className="mt-2 min-h-[16px] text-[11px]" aria-live="polite">
           {error && <span className="font-semibold text-red-600">{error}</span>}
+          {notice && (
+            <span className="flex items-center gap-1.5 font-semibold text-amber-700">
+              <Info size={13} className="shrink-0" /> {notice}
+            </span>
+          )}
           {sent && (
             <span className="flex items-center gap-1 font-semibold text-emerald-700">
               <CircleCheck size={13} /> Request received. Our network engineer will call within 15 minutes.

@@ -377,14 +377,16 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
+                    translate="no"
                     className="btn-primary w-full !py-3 !rounded-xl !text-sm shadow-md"
                   >
                     {loading ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" /> Checking {authModeLabel}...
-                      </>
+                      <span key="loading" className="inline-flex items-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Checking {authModeLabel}...</span>
+                      </span>
                     ) : (
-                      <>Sign In via {authModeLabel} &rarr;</>
+                      <span key="idle">Sign In via {authModeLabel} &rarr;</span>
                     )}
                   </button>
                 </form>

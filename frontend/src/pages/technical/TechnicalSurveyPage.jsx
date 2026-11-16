@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   CheckCircle2,
   XCircle,
@@ -35,7 +35,7 @@ import AsyncStatePanel from '../../components/common/AsyncStatePanel'
 import OrderStatusBadge from '../../components/common/OrderStatusBadge'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { ORDER_STATUS } from '../../utils/orderStatus'
-import { REVIEW1_API_MODE } from '../../services/review1Api'
+import { REVIEW1_API_MODE, fetchOrderDetailApi } from '../../services/review1Api'
 
 function resolvePresetReasonState(rejectionReason, isOverDistance, isMissingDocs) {
   const trimmed = String(rejectionReason || '').trim()
@@ -88,6 +88,7 @@ function formatDocBytes(size) {
 
 export default function TechnicalSurveyPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const {
     data: ordersData,
     setData: setOrders,
@@ -97,9 +98,14 @@ export default function TechnicalSurveyPage() {
   } = useAsyncResource(() => surveyService.fetchSurveyOrders(), [])
   const orders = ordersData || []
   const [selectedOrderId, setSelectedOrderId] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const { toast, showToast } = useToast()
+
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q !== null) setSearchQuery(q)
+  }, [searchParams])
 
   useEffect(() => {
     if (!ordersData) return
@@ -118,11 +124,16 @@ export default function TechnicalSurveyPage() {
   }, [orders, selectedOrderId])
 
   const [formDistance, setFormDistance] = useState(185)
+  const [formDistanceOk, setFormDistanceOk] = useState(true)
+  const [formServerAvailable, setFormServerAvailable] = useState(true)
   const [formPort, setFormPort] = useState(4)
   const [formConduit, setFormConduit] = useState('HDPE 110mm Duct')
   const [formResult, setFormResult] = useState('FEASIBLE')
+  const [formLandlineFeasible, setFormLandlineFeasible] = useState(true)
+  const [formFeasibleNote, setFormFeasibleNote] = useState('')
   const [formReasonCode, setFormReasonCode] = useState(SURVEY_INFEASIBILITY_REASONS[0].code)
   const [formReasonNotes, setFormReasonNotes] = useState('')
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState(null)
   const [formAllowOverride, setFormAllowOverride] = useState(false)
   const [formOverrideReason, setFormOverrideReason] = useState('')
   const [docStorageState, setDocStorageState] = useState({
@@ -159,13 +170,18 @@ export default function TechnicalSurveyPage() {
       isOver,
       !docs.isComplete
     )
-    setFormDistance(dist)
-    setFormPort(ord.reservedPort || 1)
+    setFormDistance(Number(dist) || 200)
+    setFormDistanceOk(true)
+    setFormServerAvailable(true)
+    setFormFeasibleNote('')
+    setFormPort(Number(ord.reservedPort) || 1)
     setFormConduit(ord.conduitType || 'HDPE 110mm Duct')
     setFormAllowOverride(Boolean(ord.distanceOverrideApproved))
     setFormOverrideReason(ord.distanceOverrideReason || '')
-    setFormReasonCode(presetState.code)
-    setFormReasonNotes(presetState.notes)
+    setFormReasonCode(presetState.code || SURVEY_INFEASIBILITY_REASONS[0].code)
+    setFormReasonNotes(presetState.notes || '')
+    const landlineOk = ord.serviceType !== 'DIALUP' || ord.hasNexusLandline === true
+    setFormLandlineFeasible(landlineOk)
     setFormResult(
       !docs.isComplete || ord.status === ORDER_STATUS.NOT_FEASIBLE
         ? 'INFEASIBLE'
@@ -177,6 +193,22 @@ export default function TechnicalSurveyPage() {
   useEffect(() => {
     syncFormFromOrder(selectedOrder)
   }, [selectedOrder?.id, syncFormFromOrder])
+
+  useEffect(() => {
+    if (!REVIEW1_API_MODE || !selectedOrder?.id) {
+      setSelectedOrderDetail(null)
+      return undefined
+    }
+    let cancelled = false
+    fetchOrderDetailApi(selectedOrder.id)
+      .then((detail) => {
+        if (!cancelled) setSelectedOrderDetail(detail)
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedOrderDetail(null)
+      })
+    return () => { cancelled = true }
+  }, [selectedOrder?.id, selectedOrder?.status])
 
   useEffect(() => {
     if (REVIEW1_API_MODE) {
@@ -263,8 +295,11 @@ export default function TechnicalSurveyPage() {
     (!docStorageState.checking &&
       (!docStorageState.nationalIdAvailable || !docStorageState.addressProofAvailable)))
   const isSubmitBlocked =
-    formResult === 'FEASIBLE' &&
-    (!isDistanceValid || docStorageState.checking || isMissingOrUnavailableDocs || !isOverrideReady)
+    (REVIEW1_API_MODE && selectedOrder?.status !== ORDER_STATUS.PENDING_SURVEY) ||
+    (formResult === 'FEASIBLE' &&
+      (!REVIEW1_API_MODE
+        ? !isDistanceValid || docStorageState.checking || isMissingOrUnavailableDocs || !isOverrideReady
+        : !formDistanceOk || !formServerAvailable))
 
   async function handleViewDocument(docMeta) {
     try {
@@ -308,12 +343,37 @@ export default function TechnicalSurveyPage() {
       }
     }
 
-    const compiledRejectionReason = formatInfeasibilityReason(formReasonCode, formReasonNotes)
-    if (formResult === 'INFEASIBLE' && formReasonCode === 'OTHER' && compiledRejectionReason.length < 5) {
+    const compiledRejectionReason = REVIEW1_API_MODE
+      ? (formReasonNotes.trim() || formatInfeasibilityReason(formReasonCode, formReasonNotes))
+      : formatInfeasibilityReason(formReasonCode, formReasonNotes)
+    if (!REVIEW1_API_MODE && formResult === 'INFEASIBLE' && formReasonCode === 'OTHER' && compiledRejectionReason.length < 5) {
       const msg = 'Please enter technical details (at least 5 characters) when selecting Other.'
       setSubmitError(msg)
       showToast(msg, 'error')
       return
+    }
+    if (REVIEW1_API_MODE && formResult === 'INFEASIBLE' && !compiledRejectionReason) {
+      const msg = 'Please enter the rejection reason.'
+      setSubmitError(msg)
+      showToast(msg, 'error')
+      return
+    }
+
+    const needsLandlineCheck = selectedOrder.serviceType === 'DIALUP' && !selectedOrder.hasNexusLandline
+    const effectiveLandlineFeasible = needsLandlineCheck ? Boolean(formLandlineFeasible) : null
+    if (REVIEW1_API_MODE && formResult === 'FEASIBLE') {
+      if (!formDistanceOk || !formServerAvailable) {
+        const msg = 'Cannot mark FEASIBLE unless Distance within limit and Server available are both checked.'
+        setSubmitError(msg)
+        showToast(msg, 'error')
+        return
+      }
+      if (needsLandlineCheck && !formLandlineFeasible) {
+        const msg = 'Dial-up subscriber does not have a Nexus landline. Check Landline feasible or mark INFEASIBLE.'
+        setSubmitError(msg)
+        showToast(msg, 'error')
+        return
+      }
     }
 
     setIsSubmitting(true)
@@ -323,11 +383,14 @@ export default function TechnicalSurveyPage() {
       if (formResult === 'FEASIBLE') {
         response = await surveyService.approveSurveyFeasible(selectedOrder.id, {
           distanceMeters: parsedDistance,
+          distanceOk: REVIEW1_API_MODE ? formDistanceOk : undefined,
+          serverAvailable: REVIEW1_API_MODE ? formServerAvailable : undefined,
           reservedPort: Number(formPort),
           conduitType: formConduit,
           odfName: selectedOrder.odfName,
           rxPowerDbm: -18.4,
-          landlineFeasible: selectedOrder.serviceType !== 'DIALUP' || selectedOrder.hasNexusLandline === true,
+          landlineFeasible: effectiveLandlineFeasible,
+          note: REVIEW1_API_MODE ? formFeasibleNote.trim() : undefined,
           fieldEngineer: 'Do Manh Cuong (NOC)',
           allowDistanceOverride: isOverDistanceLimit && formAllowOverride,
           overrideReason: isOverDistanceLimit && formAllowOverride ? formOverrideReason.trim() : '',
@@ -337,7 +400,12 @@ export default function TechnicalSurveyPage() {
         response = await surveyService.rejectSurveyUnfeasible(
           selectedOrder.id,
           compiledRejectionReason || SURVEY_INFEASIBILITY_REASONS[0].label,
-          { distanceMeters: isDistanceValid ? parsedDistance : undefined }
+          {
+            distanceMeters: isDistanceValid ? parsedDistance : undefined,
+            distanceOk: REVIEW1_API_MODE ? formDistanceOk : undefined,
+            serverAvailable: REVIEW1_API_MODE ? formServerAvailable : undefined,
+            landlineFeasible: effectiveLandlineFeasible,
+          }
         )
         showToast(`Survey for ${selectedOrder.id} marked NOT FEASIBLE and saved.`)
       }
@@ -346,6 +414,9 @@ export default function TechnicalSurveyPage() {
         setOrders((prev) =>
           (prev || []).map((o) => (o.id === response.order.id ? response.order : o))
         )
+        if (REVIEW1_API_MODE) {
+          fetchOrderDetailApi(response.order.id).then(setSelectedOrderDetail).catch(() => {})
+        }
       } else {
         await reloadSurveys()
       }
@@ -391,7 +462,7 @@ export default function TechnicalSurveyPage() {
   }, [orders, statusFilter, searchQuery])
 
   return (
-    <TechnicalLayout activeNavId="surveys" toast={toast}>
+    <TechnicalLayout activeNavId="surveys" apiMode={REVIEW1_API_MODE} toast={toast}>
       <div className="card p-5 md:p-6 shadow-sm space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
           <div>
@@ -407,11 +478,13 @@ export default function TechnicalSurveyPage() {
                 ODN Optical Distribution Feasibility Survey
               </h1>
               <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 font-mono text-[11px] font-bold text-brand-soft">
-                &le; 500M LIMIT
+                {REVIEW1_API_MODE ? 'REVIEW 1 SURVEY' : '≤ 500M LIMIT'}
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Distance validation (&le; 500m), splitter port verification, conduit checks, and shared order sync
+              {REVIEW1_API_MODE
+                ? 'Evaluate distance within limit, server availability, Dial-up landline feasibility, and record survey notes.'
+                : 'Distance validation (≤ 500m), splitter port verification, conduit checks, and shared order sync'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -468,11 +541,15 @@ export default function TechnicalSurveyPage() {
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
-                  SLA Priority
+                  {REVIEW1_API_MODE ? 'Ready for Activation' : 'SLA Priority'}
                 </span>
                 <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-rose-600">{surveyMetrics.urgentPendingCount}</span>
-                  <span className="text-xs font-bold text-rose-500">Urgent Pending</span>
+                  <span className={`text-2xl font-black ${REVIEW1_API_MODE ? 'text-indigo-600' : 'text-rose-600'}`}>
+                    {REVIEW1_API_MODE ? surveyMetrics.feasibleCount : surveyMetrics.urgentPendingCount}
+                  </span>
+                  <span className={`text-xs font-bold ${REVIEW1_API_MODE ? 'text-indigo-500' : 'text-rose-500'}`}>
+                    {REVIEW1_API_MODE ? 'Feasible Orders' : 'Urgent Pending'}
+                  </span>
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -574,11 +651,12 @@ export default function TechnicalSurveyPage() {
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="font-mono text-xs font-bold text-navy">{ord.id}</span>
                               <OrderStatusBadge status={ord.status} />
-                              {ord.status === ORDER_STATUS.PENDING_SURVEY && ord.isUrgent && (
+                              {!REVIEW1_API_MODE && ord.status === ORDER_STATUS.PENDING_SURVEY && ord.isUrgent && (
                                 <span className="rounded-full bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5">
                                   URGENT
                                 </span>
                               )}
+                              {!REVIEW1_API_MODE && (
                               <span
                                 className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${
                                   cardDocStatus.isComplete
@@ -588,7 +666,8 @@ export default function TechnicalSurveyPage() {
                               >
                                 {cardDocStatus.isComplete ? '2/2 Docs' : 'Missing Docs'}
                               </span>
-                              {isCardOverLimit && (
+                              )}
+                              {!REVIEW1_API_MODE && isCardOverLimit && (
                                 <span
                                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${
                                     ord.distanceOverrideApproved
@@ -601,7 +680,7 @@ export default function TechnicalSurveyPage() {
                               )}
                             </div>
                             <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                              <Clock size={12} /> SLA: {ord.slaTimeRemaining}
+                              <Clock size={12} /> {REVIEW1_API_MODE ? (ord.registeredTime || 'Review 1') : `SLA: ${ord.slaTimeRemaining}`}
                             </span>
                           </div>
 
@@ -613,14 +692,22 @@ export default function TechnicalSurveyPage() {
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-slate-600 border-t border-slate-100 pt-2">
                             <div className="flex flex-wrap items-center gap-4">
                               <span>
-                                Service: <strong className="text-slate-800">{ord.serviceTitle}</strong>
+                                Plan: <strong className="text-slate-800">{ord.planName || ord.serviceTitle}</strong>
                               </span>
-                              <span>
-                                Target ODF: <strong className="text-slate-800">{ord.odfName}</strong>
-                              </span>
-                              <span>
-                                Est. Span: <strong className="text-brand font-mono">{ord.distanceMeters}m</strong>
-                              </span>
+                              {REVIEW1_API_MODE ? (
+                                <span>
+                                  City: <strong className="font-mono text-slate-800">{ord.cityCode}</strong>
+                                </span>
+                              ) : (
+                                <>
+                                  <span>
+                                    Target ODF: <strong className="text-slate-800">{ord.odfName}</strong>
+                                  </span>
+                                  <span>
+                                    Est. Span: <strong className="text-brand font-mono">{ord.distanceMeters}m</strong>
+                                  </span>
+                                </>
+                              )}
                             </div>
                             {ord.status === ORDER_STATUS.FEASIBLE && (
                               <button
@@ -772,67 +859,103 @@ export default function TechnicalSurveyPage() {
                     </div>
 
                     <form onSubmit={handleSubmitSurvey} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Distance to Nearest ODF (Meters) &bull; Limit &le; {MAX_SURVEY_DISTANCE_METERS}m
-                        </label>
-                        <input
-                          type="number"
-                          required
-                          min="1"
-                          max="5000"
-                          value={formDistance}
-                          onChange={(e) => setFormDistance(e.target.value)}
-                          className={`w-full rounded-xl border px-3 py-2 text-xs font-bold outline-none ${
-                            isOverDistanceLimit
-                              ? 'border-rose-300 bg-rose-50 text-rose-700'
-                              : 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-brand'
-                          }`}
-                        />
-                        {isOverDistanceLimit && (
-                          <div className="mt-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 flex items-start gap-2">
-                            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                            <span>
-                              Optical span ({parsedDistance}m) exceeds the {MAX_SURVEY_DISTANCE_METERS}m ODN standard limit. FEASIBLE is blocked unless an authorized Senior NOC override is recorded below.
-                            </span>
+                      {REVIEW1_API_MODE ? (
+                        <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                          <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                            Review 1 Backend Assessment Checks
                           </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Port</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="32"
-                            value={formPort}
-                            onChange={(e) => setFormPort(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:border-brand outline-none"
-                          />
+                          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formDistanceOk}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                setFormDistanceOk(next)
+                                if (!next) setFormResult('INFEASIBLE')
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Distance within limit (&le; {MAX_SURVEY_DISTANCE_METERS}m)</span>
+                          </label>
+                          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formServerAvailable}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                setFormServerAvailable(next)
+                                if (!next) setFormResult('INFEASIBLE')
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Server / ODN capacity available</span>
+                          </label>
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Target ODF Box</label>
-                          <input
-                            type="text"
-                            disabled
-                            value={selectedOrder.odfName}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 outline-none"
-                          />
-                        </div>
-                      </div>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Distance to Nearest ODF (Meters) &bull; Limit &le; {MAX_SURVEY_DISTANCE_METERS}m
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              max="5000"
+                              value={formDistance}
+                              onChange={(e) => setFormDistance(e.target.value)}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs font-bold outline-none ${
+                                isOverDistanceLimit
+                                  ? 'border-rose-300 bg-rose-50 text-rose-700'
+                                  : 'border-slate-200 bg-slate-50 text-slate-800 focus:bg-white focus:border-brand'
+                              }`}
+                            />
+                            {isOverDistanceLimit && (
+                              <div className="mt-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 flex items-start gap-2">
+                                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                                <span>
+                                  Optical span ({parsedDistance}m) exceeds the {MAX_SURVEY_DISTANCE_METERS}m ODN standard limit. FEASIBLE is blocked unless an authorized Senior NOC override is recorded below.
+                                </span>
+                              </div>
+                            )}
+                          </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Conduit Infrastructure
-                        </label>
-                        <input
-                          type="text"
-                          value={formConduit}
-                          onChange={(e) => setFormConduit(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-brand outline-none"
-                        />
-                      </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Port</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="32"
+                                value={formPort}
+                                onChange={(e) => setFormPort(e.target.value)}
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:border-brand outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">Target ODF Box</label>
+                              <input
+                                type="text"
+                                disabled
+                                value={selectedOrder.odfName || ''}
+                                className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Conduit Infrastructure
+                            </label>
+                            <input
+                              type="text"
+                              value={formConduit}
+                              onChange={(e) => setFormConduit(e.target.value)}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-brand outline-none"
+                            />
+                          </div>
+                        </>
+                      )}
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">Survey Decision</label>
@@ -874,7 +997,43 @@ export default function TechnicalSurveyPage() {
                         </div>
                       </div>
 
-                      {formResult === 'FEASIBLE' && isOverDistanceLimit && (
+                      {REVIEW1_API_MODE && selectedOrder.serviceType === 'DIALUP' && !selectedOrder.hasNexusLandline && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-1.5">
+                          <label className="flex items-center gap-2 text-xs font-bold text-amber-950 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formLandlineFeasible}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                setFormLandlineFeasible(next)
+                                if (!next) setFormResult('INFEASIBLE')
+                              }}
+                              className="rounded border-amber-400 text-amber-700 focus:ring-amber-500"
+                            />
+                            <span>Landline feasible at installation address (Dial-up prerequisite)</span>
+                          </label>
+                          <p className="text-[11px] text-amber-800">
+                            Subscriber has no declared Nexus landline. Uncheck and enter rejection reason to mark Not Feasible.
+                          </p>
+                        </div>
+                      )}
+
+                      {REVIEW1_API_MODE && formResult === 'FEASIBLE' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Technical Assessment Note (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={formFeasibleNote}
+                            onChange={(e) => setFormFeasibleNote(e.target.value)}
+                            placeholder="Optional survey confirmation note..."
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:bg-white focus:border-brand"
+                          />
+                        </div>
+                      )}
+
+                      {!REVIEW1_API_MODE && formResult === 'FEASIBLE' && isOverDistanceLimit && (
                         <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 space-y-2.5">
                           <label className="flex items-start gap-2 cursor-pointer">
                             <input
@@ -909,43 +1068,71 @@ export default function TechnicalSurveyPage() {
                       )}
 
                       {formResult === 'INFEASIBLE' && (
-                        <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50/50 p-3">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">
-                              Infeasibility Reason (Preset Standard)
-                            </label>
-                            <select
-                              value={formReasonCode}
-                              onChange={(e) => setFormReasonCode(e.target.value)}
-                              className="w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-rose-400"
-                            >
-                              {SURVEY_INFEASIBILITY_REASONS.map((reason) => (
-                                <option key={reason.code} value={reason.code}>
-                                  {reason.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">
-                              {formReasonCode === 'OTHER'
-                                ? 'Technical Infeasibility Details (Required)'
-                                : 'Additional Field Notes (Optional)'}
+                        REVIEW1_API_MODE ? (
+                          <div className="space-y-2.5 rounded-xl border border-rose-200 bg-rose-50/50 p-3">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Rejection Reason / Technical Note <span className="text-rose-500">*</span>
                             </label>
                             <textarea
                               rows={2}
-                              required={formReasonCode === 'OTHER'}
+                              required
                               value={formReasonNotes}
                               onChange={(e) => setFormReasonNotes(e.target.value)}
-                              placeholder={
-                                formReasonCode === 'OTHER'
-                                  ? 'Describe the specific optical/civil obstacle (min 5 characters)...'
-                                  : 'Optional OTDR dBm reading, manhole ID, or civil work notes...'
-                              }
+                              placeholder="Enter infeasibility reason (e.g. Chưa có đường dây tại địa chỉ lắp đặt)..."
                               className="w-full rounded-xl border border-rose-200 bg-white p-2.5 text-xs text-slate-800 outline-none focus:border-rose-400"
                             />
+                            <div className="flex flex-wrap gap-1.5">
+                              {SURVEY_INFEASIBILITY_REASONS.slice(0, 3).map((reason) => (
+                                <button
+                                  key={reason.code}
+                                  type="button"
+                                  onClick={() => setFormReasonNotes(reason.label)}
+                                  className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer"
+                                >
+                                  + {reason.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50/50 p-3">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Infeasibility Reason (Preset Standard)
+                              </label>
+                              <select
+                                value={formReasonCode}
+                                onChange={(e) => setFormReasonCode(e.target.value)}
+                                className="w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-rose-400"
+                              >
+                                {SURVEY_INFEASIBILITY_REASONS.map((reason) => (
+                                  <option key={reason.code} value={reason.code}>
+                                    {reason.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                {formReasonCode === 'OTHER'
+                                  ? 'Technical Infeasibility Details (Required)'
+                                  : 'Additional Field Notes (Optional)'}
+                              </label>
+                              <textarea
+                                rows={2}
+                                required={formReasonCode === 'OTHER'}
+                                value={formReasonNotes}
+                                onChange={(e) => setFormReasonNotes(e.target.value)}
+                                placeholder={
+                                  formReasonCode === 'OTHER'
+                                    ? 'Describe the specific optical/civil obstacle (min 5 characters)...'
+                                    : 'Optional OTDR dBm reading, manhole ID, or civil work notes...'
+                                }
+                                className="w-full rounded-xl border border-rose-200 bg-white p-2.5 text-xs text-slate-800 outline-none focus:border-rose-400"
+                              />
+                            </div>
+                          </div>
+                        )
                       )}
 
                       {submitError && (
@@ -972,12 +1159,16 @@ export default function TechnicalSurveyPage() {
                         <span>
                           {isSubmitting
                             ? 'Recording Decision...'
+                            : REVIEW1_API_MODE && selectedOrder.status !== ORDER_STATUS.PENDING_SURVEY
+                            ? `Already Assessed (${selectedOrder.status})`
                             : formResult === 'FEASIBLE' && docStorageState.checking
                             ? 'Verifying Documents...'
                             : formResult === 'FEASIBLE' && isMissingOrUnavailableDocs
                             ? 'FEASIBLE Blocked — Missing Documents'
-                            : formResult === 'FEASIBLE' && isOverDistanceLimit && !isOverrideReady
+                            : !REVIEW1_API_MODE && formResult === 'FEASIBLE' && isOverDistanceLimit && !isOverrideReady
                             ? `FEASIBLE Blocked — >${MAX_SURVEY_DISTANCE_METERS}m Limit (Override Required)`
+                            : REVIEW1_API_MODE
+                            ? 'Save Assessment'
                             : 'Commit Survey Verdict'}
                         </span>
                       </button>
@@ -992,6 +1183,29 @@ export default function TechnicalSurveyPage() {
                         </Link>
                       )}
                     </form>
+
+                    {REVIEW1_API_MODE && selectedOrderDetail?.id === selectedOrder.id && Array.isArray(selectedOrderDetail.history) && selectedOrderDetail.history.length > 0 && (
+                      <div className="border-t border-slate-100 pt-3 space-y-2">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          BACKEND AUDIT HISTORY
+                        </span>
+                        <div className="space-y-1.5">
+                          {selectedOrderDetail.history.map((entry, idx) => (
+                            <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50/70 p-2 text-[11px]">
+                              <div className="flex items-center justify-between font-bold text-slate-800">
+                                <span>{entry.status}</span>
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  {entry.at ? new Date(entry.at).toLocaleString() : ''}
+                                </span>
+                              </div>
+                              <div className="text-slate-600">
+                                {entry.actor}{entry.note ? ` · ${entry.note}` : ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <AsyncStatePanel

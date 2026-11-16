@@ -44,11 +44,12 @@ import {
 const INITIAL_FORM_STATE = {
   sku: '',
   name: '',
+  description: '',
   type: 'BROADBAND',
   cirMbps: 200,
   pirMbps: 500,
-  monthlyNetUSD: 2500,
-  cpeMonthlyUSD: 200,
+  monthlyNetUSD: 225,
+  cpeMonthlyUSD: 0,
   cpeModel: 'Nexus Wi-Fi 6 GPON Model NX-G820',
   domesticSpeed: '',
   ipStatic: '',
@@ -56,6 +57,12 @@ const INITIAL_FORM_STATE = {
   recommended: false,
   changeReason: '',
 }
+
+const REVIEW1_PLAN_TYPE_OPTIONS = [
+  { value: 'BROADBAND', label: 'Broadband [B]' },
+  { value: 'DIAL_UP', label: 'Dial-Up [D]' },
+  { value: 'SIP_TRUNK', label: 'Landline [T]' },
+]
 
 const ACTION_BADGE_STYLES = {
   INITIAL_SEED: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -193,6 +200,7 @@ export default function TariffTable({ readOnly = false }) {
     setFormData({
       sku: plan.sku || plan.id,
       name: plan.name || '',
+      description: plan.description || '',
       type: plan.type || 'BROADBAND',
       cirMbps: plan.cirMbps ?? 0,
       pirMbps: plan.pirMbps ?? 0,
@@ -230,11 +238,12 @@ export default function TariffTable({ readOnly = false }) {
     const payload = {
       sku: formData.sku.trim().toUpperCase(),
       name: formData.name.trim(),
+      description: formData.description.trim(),
       type: formData.type,
       cirMbps: Number(formData.cirMbps) || 0,
       pirMbps: Number(formData.pirMbps) || 0,
       monthlyNetUSD: Number(formData.monthlyNetUSD) || 0,
-      cpeMonthlyUSD: Number(formData.cpeMonthlyUSD) || 0,
+      cpeMonthlyUSD: REVIEW1_API_MODE ? 0 : Number(formData.cpeMonthlyUSD) || 0,
       cpeModel: formData.cpeModel.trim(),
       domesticSpeed: formData.domesticSpeed.trim(),
       ipStatic: formData.ipStatic.trim(),
@@ -386,6 +395,81 @@ export default function TariffTable({ readOnly = false }) {
             </div>
 
             <form onSubmit={handleSavePlan} className="space-y-3">
+              {REVIEW1_API_MODE ? (
+                <>
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-medium text-sky-900">
+                    Review 1 Catalog saves Plan Name, Network Type (B/D/T), Plan Price ($ USD), Description, and Active status directly to the backend database.
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Plan Commercial Name <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        maxLength={100}
+                        placeholder="e.g. BB Basic"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Network Type</label>
+                      <select
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-600"
+                      >
+                        {REVIEW1_PLAN_TYPE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Plan Price ($ USD) <span className="text-rose-500">*</span></label>
+                      <input
+                        type="number"
+                        required
+                        step="0.01"
+                        min="0"
+                        value={formData.monthlyNetUSD}
+                        onChange={(e) => setFormData({ ...formData, monthlyNetUSD: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Catalog Status</label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-600"
+                      >
+                        <option value="ACTIVE">ACTIVE (Visible in Retail)</option>
+                        <option value="INACTIVE">INACTIVE (Hidden in Retail)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Plan Description</label>
+                    <input
+                      type="text"
+                      maxLength={240}
+                      placeholder="e.g. 64 Kbps · monthly or 10 hours · one month"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:bg-white focus:border-indigo-600"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">SKU Code</label>
@@ -543,6 +627,8 @@ export default function TariffTable({ readOnly = false }) {
                 />
                 <span>Highlight as Popular / Default selection in Retail Order Form</span>
               </label>
+                </>
+              )}
 
               {formError && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 flex items-center gap-2">
@@ -756,35 +842,50 @@ export default function TariffTable({ readOnly = false }) {
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Catalog Version (CN03)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              {REVIEW1_API_MODE ? 'Catalog Storage' : 'Catalog Version (CN03)'}
+            </span>
             <GitBranch size={14} className="text-indigo-500" />
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-indigo-600">{catalogMeta.versionTag}</span>
-            <button
-              type="button"
-              onClick={() => setViewSection('HISTORY')}
-              className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
-            >
-              {versionHistory.length} revisions &rarr;
-            </button>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400 truncate">
-            Last: {formatRevisionTimestamp(catalogMeta.lastUpdatedAt)}
-          </div>
+          {REVIEW1_API_MODE ? (
+            <>
+              <div className="mt-2 text-2xl font-black font-mono text-indigo-600">BACKEND SQL</div>
+              <div className="mt-1 text-[11px] text-slate-400">
+                Live `/api/plans` catalog &bull; Revision log post-Review 1
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-black font-mono text-indigo-600">{catalogMeta.versionTag}</span>
+                <button
+                  type="button"
+                  onClick={() => setViewSection('HISTORY')}
+                  className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  {versionHistory.length} revisions &rarr;
+                </button>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-400 truncate">
+                Last: {formatRevisionTimestamp(catalogMeta.lastUpdatedAt)}
+              </div>
+            </>
+          )}
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">Statutory Tax (Fixed)</span>
           <div className="mt-2 text-2xl font-black text-emerald-600">{taxRate}%</div>
-          <div className="mt-1 text-[11px] text-slate-400">Read-only across tariffs, billing &amp; reports</div>
+          <div className="mt-1 text-[11px] text-slate-400">
+            {REVIEW1_API_MODE ? 'Preview rate • Review 1 bills Net Plan Price' : 'Read-only across tariffs, billing & reports'}
+          </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">Role Clearance</span>
           <div className="mt-2 text-2xl font-black text-slate-800">
-            {readOnly ? 'Read-Only' : 'CRUD + History'}
+            {readOnly ? 'Read-Only' : REVIEW1_API_MODE ? 'Admin API CRUD' : 'CRUD + History'}
           </div>
           <div className="mt-1 text-[11px] text-slate-400">
-            {readOnly ? 'Price lookup & version audit trail' : 'Synced to Retail with revision tracking'}
+            {readOnly ? 'Price lookup & version audit trail' : REVIEW1_API_MODE ? 'Synced immediately with Retail & Billing' : 'Synced to Retail with revision tracking'}
           </div>
         </div>
       </div>
@@ -821,20 +922,22 @@ export default function TariffTable({ readOnly = false }) {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Active Tariff Matrix ({plans.length})
+            <span>Active Tariff Matrix ({plans.length})</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setViewSection('HISTORY')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
-              viewSection === 'HISTORY'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <History size={13} />
-            <span>Version History &amp; Change Log ({versionHistory.length})</span>
-          </button>
+          {!REVIEW1_API_MODE && (
+            <button
+              type="button"
+              onClick={() => setViewSection('HISTORY')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
+                viewSection === 'HISTORY'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <History size={13} />
+              <span>Version History &amp; Change Log ({versionHistory.length})</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -955,7 +1058,7 @@ export default function TariffTable({ readOnly = false }) {
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{plan.name}</div>
                           <div className="text-[10px] text-slate-400">
-                            {plan.type} &bull; {plan.cpeModel}
+                            {plan.type} &bull; {REVIEW1_API_MODE ? (plan.description || 'No description') : plan.cpeModel}
                           </div>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-[11px]">
@@ -984,14 +1087,16 @@ export default function TariffTable({ readOnly = false }) {
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openPlanHistoryFilter(plan)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                              title="View SKU Revision History"
-                            >
-                              <History size={14} />
-                            </button>
+                            {!REVIEW1_API_MODE && (
+                              <button
+                                type="button"
+                                onClick={() => openPlanHistoryFilter(plan)}
+                                className="rounded-lg p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                title="View SKU Revision History"
+                              >
+                                <History size={14} />
+                              </button>
+                            )}
                             {!readOnly && (
                               <>
                                 <button
