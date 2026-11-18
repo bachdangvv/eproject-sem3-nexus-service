@@ -4,3 +4,13 @@ demo.db*
 data/
 *.user
 TestResults/
+
+# Local specification docs, design references, local E2E/test harnesses & AI agent configs
+debai/
+UI_UX_Design_Specification.md
+frontend/Landing page/
+e2e/
+tests/
+AGENTS.md
+frontend/AGENTS.md
+frontend/GEMINI.md

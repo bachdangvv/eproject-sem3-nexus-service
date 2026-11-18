@@ -1,0 +1,35 @@
+{
+  "name": "@nexus/theme-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./themes/vercel/vercelTheme.ts",
+      "default": "./themes/vercel/vercelTheme.ts"
+    },
+    "./themes/vercel": {
+      "types": "./themes/vercel/vercel.d.ts",
+      "default": "./themes/vercel/vercel.js"
+    },
+    "./themes/vercel.css": {
+      "types": "./themes/vercel/vercel.css.d.ts",
+      "default": "./themes/vercel/vercel.css"
+    },
+    "./built": {
+      "types": "./themes/vercel/vercel.d.ts",
+      "default": "./themes/vercel/vercel.js"
+    },
+    "./theme.css": {
+      "types": "./themes/vercel/vercel.css.d.ts",
+      "default": "./themes/vercel/vercel.css"
+    }
+  },
+  "peerDependencies": {
+    "@astryxdesign/core": "^0.7.16",
+    "react": ">=19"
+  }
+}
