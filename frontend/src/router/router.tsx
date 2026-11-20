@@ -35,6 +35,7 @@ export const RoutePath = {
   RETAIL_CUSTOMERS: '/retail/customers',
   RETAIL_REQUESTS: '/retail/requests',
   RETAIL_ORDERS: '/retail/orders',
+  RETAIL_BILLING: '/retail/billing',
 
   TECHNICAL: '/technical',
   TECHNICAL_ASSESSMENTS: '/technical/assessments',

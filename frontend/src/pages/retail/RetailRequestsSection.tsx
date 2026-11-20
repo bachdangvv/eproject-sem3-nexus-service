@@ -19,8 +19,10 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
+import { TextInput } from '@astryxdesign/core/TextInput';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { useToast } from '@astryxdesign/core/Toast';
+import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   ApiErrorBanner,
@@ -29,6 +31,7 @@ import {
   ServiceTypeToken,
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
+import { computeBillAmounts } from '../../data/tariffs';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
 import { getCities, getPlans } from '../../services/catalogApi';
@@ -79,6 +82,7 @@ export function RetailRequestsSection({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [connectionCount, setConnectionCount] = useState('1');
   const [hasNexusLandline, setHasNexusLandline] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<RequestFieldErrors>({});
   const [createError, setCreateError] = useState<string | null>(null);
@@ -210,6 +214,21 @@ export function RetailRequestsSection({
 
   const isDialUpPlan = selectedPlan?.type === 'D';
 
+  const parsedCount = Math.max(1, parseInt(connectionCount, 10) || 1);
+  const liveEstimate = useMemo(() => {
+    if (!selectedPlan) return null;
+    return computeBillAmounts({
+      connectionType: selectedPlan.type,
+      planRentalUsd: selectedPlan.price,
+      connectionCount: parsedCount,
+      includeSecurityDeposit: true,
+      usageChargesUsd: 0,
+      equipmentReplacementUsd: 0,
+      previousArrearsUsd: 0,
+      advanceAdjustmentUsd: 0,
+    });
+  }, [selectedPlan, parsedCount]);
+
   const requestRows = useMemo<RequestRow[]>(
     () => requests.map((req) => ({ ...req })),
     [requests],
@@ -219,6 +238,7 @@ export function RetailRequestsSection({
   const openCreateDrawer = () => {
     setSelectedCustomerId('');
     setSelectedPlanId('');
+    setConnectionCount('1');
     setHasNexusLandline(false);
     setFieldErrors({});
     setCreateError(null);
@@ -254,11 +274,13 @@ export function RetailRequestsSection({
         customerId: parsedCustomerId,
         planId: parsedPlanId,
         hasNexusLandline: isDialUpPlan ? hasNexusLandline : false,
+        connectionCount: parsedCount,
       });
       if (!isMountedRef.current) return;
       setIsCreateOpen(false);
       setSelectedCustomerId('');
       setSelectedPlanId('');
+      setConnectionCount('1');
       setHasNexusLandline(false);
       setFieldErrors({});
       setCreateError(null);
@@ -336,12 +358,19 @@ export function RetailRequestsSection({
     },
     {
       key: 'planName',
-      header: 'Service Plan',
+      header: 'Service Plan & Lines',
       width: proportional(1.4, { minWidth: 165 }),
       renderCell: (row) => (
         <VStack gap={1}>
-          <Text weight="semibold">{row.planName}</Text>
-          <ServiceTypeToken type={row.type} />
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            <Text weight="semibold">{row.planName}</Text>
+            <ServiceTypeToken type={row.type} />
+          </HStack>
+          {row.connectionCount && row.connectionCount > 1 ? (
+            <Token size="sm" color="purple" label={`${row.connectionCount} lines (Bulk)`} />
+          ) : (
+            <Text type="supporting">1 line</Text>
+          )}
         </VStack>
       ),
     },
@@ -610,6 +639,15 @@ export function RetailRequestsSection({
                       }
                       onChange={(checked) => setHasNexusLandline(checked)}
                     />
+
+                    <TextInput
+                      label="Number of Connections (Lines)"
+                      placeholder="1"
+                      inputMode="numeric"
+                      value={connectionCount}
+                      onChange={(value) => setConnectionCount(value)}
+                      description="10–14 lines: 25% bulk discount; 15–24: 50%; 25–50: 75%; >50: 100% off advance rental & deposit."
+                    />
                   </FormLayout>
                 </form>
 
@@ -645,6 +683,11 @@ export function RetailRequestsSection({
                       <MetadataListItem label="Monthly Tariff">
                         {selectedPlan ? `${formatUsd(selectedPlan.price)}/mo` : '—'}
                       </MetadataListItem>
+                      <MetadataListItem label="Connections">
+                        <Text weight="medium">
+                          {parsedCount > 1 ? `${parsedCount} lines (Bulk Order)` : '1 line'}
+                        </Text>
+                      </MetadataListItem>
                       <MetadataListItem label="Landline Scope">
                         {selectedPlan?.type === 'D'
                           ? hasNexusLandline
@@ -653,6 +696,46 @@ export function RetailRequestsSection({
                           : 'Not required'}
                       </MetadataListItem>
                     </MetadataList>
+                  </Card>
+                ) : null}
+
+                {liveEstimate && selectedPlan ? (
+                  <Card variant="muted" padding={4}>
+                    <VStack gap={3}>
+                      <HStack hAlign="between" vAlign="center">
+                        <Heading level={4}>Bulk Discount & Upfront Estimate</Heading>
+                        {liveEstimate.discountPercent > 0 ? (
+                          <Token
+                            size="sm"
+                            color="purple"
+                            label={`${liveEstimate.discountPercent}% Bulk Tier (${parsedCount} lines)`}
+                          />
+                        ) : (
+                          <Token size="sm" color="gray" label="Standard (1 line)" />
+                        )}
+                      </HStack>
+                      <MetadataList columns={2}>
+                        <MetadataListItem label="Gross Plan Rental">
+                          {formatUsd(liveEstimate.rentalTotalUsd)}
+                        </MetadataListItem>
+                        <MetadataListItem label="Security Deposit">
+                          {formatUsd(liveEstimate.securityDepositGrossUsd)}
+                        </MetadataListItem>
+                        <MetadataListItem label="Bulk Discount">
+                          <Text weight="semibold">
+                            {liveEstimate.discountPercent > 0
+                              ? `${liveEstimate.discountPercent}% (-${formatUsd(liveEstimate.bulkDiscountAmountUsd)})`
+                              : '$0.00 (0%)'}
+                          </Text>
+                        </MetadataListItem>
+                        <MetadataListItem label="Service Tax (12.24%)">
+                          {formatUsd(liveEstimate.serviceTaxUsd)}
+                        </MetadataListItem>
+                        <MetadataListItem label="Estimated Upfront Total">
+                          <Text weight="bold">{formatUsd(liveEstimate.totalBilledUsd)}</Text>
+                        </MetadataListItem>
+                      </MetadataList>
+                    </VStack>
                   </Card>
                 ) : null}
               </VStack>

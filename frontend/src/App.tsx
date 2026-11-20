@@ -347,6 +347,15 @@ function NexusAppContent() {
             <RetailPortal section="orders" />
           </RoleGuard>
         );
+      case RoutePath.RETAIL_BILLING:
+        return (
+          <RoleGuard
+            allowedRole="Retail"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <RetailPortal section="billing" />
+          </RoleGuard>
+        );
 
       case RoutePath.TECHNICAL:
       case RoutePath.TECHNICAL_ASSESSMENTS:
@@ -580,6 +589,12 @@ function NexusAppContent() {
                   icon={isSidebarCollapsed ? <Icon icon="viewColumns" /> : undefined}
                   href={RoutePath.RETAIL_ORDERS}
                   isSelected={path === RoutePath.RETAIL_ORDERS}
+                />
+                <SideNavItem
+                  label="Billing & Payments"
+                  icon={isSidebarCollapsed ? <Icon icon="check" /> : undefined}
+                  href={RoutePath.RETAIL_BILLING}
+                  isSelected={path === RoutePath.RETAIL_BILLING}
                 />
               </SideNavSection>
             )}

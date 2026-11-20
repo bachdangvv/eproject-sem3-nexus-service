@@ -6,7 +6,7 @@ export type PublicServiceType = 'DIAL_UP' | 'BROADBAND' | 'LANDLINE';
 
 export type OrderStatus = 'Pending' | 'Feasible' | 'NotFeasible' | 'Connected';
 
-export type BillingStatus = 'NotBilled' | 'Unpaid' | 'Paid';
+export type BillingStatus = 'NotBilled' | 'Unpaid' | 'PartiallyPaid' | 'Paid';
 
 export type CustomerStatus = 'ACTIVE' | 'SUSPENDED';
 
@@ -72,6 +72,7 @@ export interface RequestView {
   hasNexusLandline: boolean;
   price: number;
   createdAt: string;
+  connectionCount?: number;
 }
 
 export interface OrderView {
@@ -113,6 +114,38 @@ export interface OrderDetailView {
   feedback: FeedbackView[];
 }
 
+export interface InvoiceItemView {
+  id: number;
+  invoiceNumber: string;
+  billingPeriodStart: string;
+  billingPeriodEnd: string;
+  rentalAmount: number;
+  callUsageAmount: number;
+  equipmentFee: number;
+  subtotal: number;
+  discountAmount: number;
+  discountPercent: number;
+  taxAmount: number;
+  depositAmount: number;
+  previousDueBalance: number;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: string;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export interface PaymentItemView {
+  id: number;
+  invoiceId: number;
+  amount: number;
+  paidAt: string;
+  paidByUsername: string;
+  channel: string;
+  note: string | null;
+}
+
 export interface BillingView {
   accountId: string;
   orderId: string;
@@ -121,6 +154,29 @@ export interface BillingView {
   amount: number;
   status: BillingStatus;
   paidAt: string | null;
+  invoiceId?: number | null;
+  invoiceNumber?: string | null;
+  rentalAmount?: number;
+  callUsageAmount?: number;
+  equipmentFee?: number;
+  subtotal?: number;
+  discountAmount?: number;
+  discountPercent?: number;
+  taxAmount?: number;
+  depositAmount?: number;
+  previousDueBalance?: number;
+  totalAmount?: number;
+  paidAmount?: number;
+  dueAmount?: number;
+  connectionCount?: number;
+  localMinutes?: number;
+  stdMinutes?: number;
+  mobileMinutes?: number;
+  billingPeriodStart?: string | null;
+  billingPeriodEnd?: string | null;
+  paidByUsername?: string | null;
+  invoices?: InvoiceItemView[];
+  payments?: PaymentItemView[];
 }
 
 export interface PublicTrackView {
@@ -180,6 +236,23 @@ export interface RequestInput {
   customerId: number;
   planId: number;
   hasNexusLandline: boolean;
+  connectionCount?: number;
+}
+
+export interface CreateInvoiceInput {
+  localMinutes?: number;
+  stdMinutes?: number;
+  mobileMinutes?: number;
+  equipmentFee?: number;
+  includeDeposit?: boolean;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
+export interface RecordPaymentInput {
+  amount?: number;
+  channel?: string;
+  note?: string;
 }
 
 export interface AssessmentInput {

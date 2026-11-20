@@ -32,7 +32,10 @@ public sealed record PlanInput(
     [property: Required, RegularExpression("^[DBT]$")] string Type,
     [property: StringLength(240)] string? Description,
     [property: Range(typeof(decimal), "0", "9999999999.99")] decimal Price,
-    bool Active);
+    bool Active,
+    decimal LocalCallRate = 0m,
+    decimal StdCallRate = 0m,
+    decimal MobileMsgRate = 0m);
 
 public sealed record ProductInput(
     [property: Required, StringLength(100)] string Name,
@@ -42,7 +45,21 @@ public sealed record ProductInput(
 public sealed record RequestInput(
     [property: Range(1, int.MaxValue)] int CustomerId,
     [property: Range(1, int.MaxValue)] int PlanId,
-    bool HasNexusLandline);
+    bool HasNexusLandline,
+    [property: Range(1, 10000)] int? ConnectionCount = 1);
+
+public sealed record CreateInvoiceInput(
+    decimal? LocalMinutes = 0m,
+    decimal? StdMinutes = 0m,
+    decimal? MobileMinutes = 0m,
+    decimal? EquipmentFee = 0m,
+    bool? IncludeDeposit = null,
+    DateTime? PeriodStart = null,
+    DateTime? PeriodEnd = null);
+
+public sealed record RecordPaymentInput(
+    decimal? Amount = null,
+    [property: StringLength(250)] string? Note = null);
 
 public sealed record AssessmentInput(
     [property: Required] bool? DistanceOk,

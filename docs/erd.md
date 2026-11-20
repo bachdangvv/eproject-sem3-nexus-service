@@ -1,4 +1,4 @@
-# ERD Nexus Review 1
+# ERD Nexus Review 1 & Financial Billing Engine
 
 ```mermaid
 erDiagram
@@ -10,8 +10,10 @@ erDiagram
     SERVICE_ORDER ||--o{ ORDER_EVENT : tracks
     EMPLOYEE ||--o{ ORDER_EVENT : acts
     SERVICE_ORDER ||--o| CONNECTION : activates
-    CONNECTION ||--o| BILLING_RECORD : billed
-    EMPLOYEE o|--o{ BILLING_RECORD : records_payment
+    CONNECTION ||--o{ INVOICE : bills
+    INVOICE ||--o{ PAYMENT_TRANSACTION : settles
+    EMPLOYEE ||--o{ INVOICE : generates
+    EMPLOYEE ||--o{ PAYMENT_TRANSACTION : collects
     SERVICE_ORDER ||--o{ SERVICE_FEEDBACK : receives
     EMPLOYEE ||--o{ SERVICE_FEEDBACK : records
 
@@ -43,6 +45,9 @@ erDiagram
         string Name
         string Type
         decimal Price
+        decimal LocalCallRate
+        decimal StdCallRate
+        decimal MobileMsgRate
         bool Active
     }
     PRODUCT {
@@ -61,6 +66,8 @@ erDiagram
         string CityCode
         string Address
         bool HasNexusLandline
+        decimal SnapshotPrice
+        int ConnectionCount
         bool Confirmed
     }
     SERVICE_ORDER {
@@ -87,11 +94,36 @@ erDiagram
         string CityCode
         datetime ActivatedAt
     }
-    BILLING_RECORD {
-        long ConnectionId PK,FK
+    INVOICE {
+        long Id PK
+        long ConnectionId FK
+        string InvoiceNumber UK
+        datetime BillingPeriodStart
+        datetime BillingPeriodEnd
+        decimal RentalAmount
+        decimal CallUsageAmount
+        decimal EquipmentFee
+        decimal Subtotal
+        decimal DiscountAmount
+        decimal DiscountPercent
+        decimal TaxAmount
+        decimal DepositAmount
+        decimal PreviousDueBalance
+        decimal TotalAmount
+        decimal PaidAmount
+        decimal DueAmount
+        string Status
+        datetime CreatedAt
+        int CreatedById FK
+    }
+    PAYMENT_TRANSACTION {
+        long Id PK
+        long InvoiceId FK
         decimal Amount
         datetime PaidAt
         int PaidById FK
+        string Channel
+        string Note
     }
     SERVICE_FEEDBACK {
         long Id PK
@@ -102,11 +134,3 @@ erDiagram
         datetime CreatedAt
     }
 ```
-
-Mỗi Request có tối đa một Order. Khi Retail xác nhận, hệ thống ghi Order `Pending` và sự kiện đầu tiên trong cùng giao dịch. Technical ghi kết quả `Feasible` hoặc `NotFeasible`. Chỉ đơn `Feasible` được cấp Connection và chuyển thành `Connected`. Mỗi Order có tối đa một Connection. Cấp kết nối và ghi lịch sử trạng thái diễn ra trong cùng giao dịch.
-
-Với Dial-up, khách đã có điện thoại cố định Nexus chỉ cần kiểm tra khả thi Internet. Nếu khách chưa có, Technical kiểm tra thêm đường dây điện thoại. Kết quả không khả thi cần lý do.
-
-`ServiceOrder.Id` và `Connection.Id` là serial sinh từ database. Order ID ghép tiền tố `D`, `B` hoặc `T` với serial 10 chữ số. Account ID ghép cùng tiền tố, mã thành phố 3 chữ số và serial kết nối 12 chữ số. Ví dụ `B0000000001` và `B101000000000001`. Mã thành phố, loại dịch vụ, tên gói và địa chỉ lắp đặt được lưu tại thời điểm tạo Request. Việc sửa thông tin khách hàng hoặc danh mục gói về sau không đổi mã của đơn và kết nối đã tạo.
-
-Thiết bị hiện là danh mục độc lập. Phân bổ thiết bị theo kết nối, tồn kho và mua hàng từ vendor thuộc giai đoạn sau. Phản hồi được ghi theo Order đã kết nối. Quan hệ từ Order qua Request xác định Customer tương ứng.

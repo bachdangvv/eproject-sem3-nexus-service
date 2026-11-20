@@ -22,29 +22,6 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
-                {
-                    b.Property<long>("ConnectionId")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("decimal(12,2)");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .IsConcurrencyToken()
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("PaidById")
-                        .HasColumnType("int");
-
-                    b.HasKey("ConnectionId");
-
-                    b.HasIndex("PaidById");
-
-                    b.ToTable("BillingRecords");
-                });
-
             modelBuilder.Entity("Nexus.Domain.City", b =>
                 {
                     b.Property<string>("Code")
@@ -194,6 +171,116 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.ToTable("Employees");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.Invoice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("BillingPeriodEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("BillingPeriodStart")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("CallUsageAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<long>("ConnectionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("DepositAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("DiscountPercent")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("DueAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("EquipmentFee")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<decimal>("LocalMinutes")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("MobileMinutes")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("PaidAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PaidById")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PreviousDueBalance")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("RentalAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("StdMinutes")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("TaxAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("TaxRate")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("decimal(6,4)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("PaidById");
+
+                    b.ToTable("Invoices");
+                });
+
             modelBuilder.Entity("Nexus.Domain.OrderEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -235,6 +322,45 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.HasIndex("OrderId");
 
                     b.ToTable("OrderEvents");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.PaymentTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<long>("InvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime>("PaidAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaidById")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("PaidById");
+
+                    b.ToTable("Payments");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Product", b =>
@@ -345,12 +471,24 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .HasMaxLength(240)
                         .HasColumnType("nvarchar(240)");
 
+                    b.Property<decimal>("LocalCallRate")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("MobileMsgRate")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("StdCallRate")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
@@ -386,6 +524,9 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .IsConcurrencyToken()
                         .HasColumnType("bit");
 
+                    b.Property<int>("ConnectionCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -406,6 +547,10 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<decimal>("SnapshotPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(1)
@@ -420,20 +565,6 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.HasIndex("PlanId");
 
                     b.ToTable("Requests");
-                });
-
-            modelBuilder.Entity("Nexus.Domain.BillingRecord", b =>
-                {
-                    b.HasOne("Nexus.Domain.Connection", null)
-                        .WithOne()
-                        .HasForeignKey("Nexus.Domain.BillingRecord", "ConnectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Nexus.Domain.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("PaidById")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Nexus.Domain.Connection", b =>
@@ -456,6 +587,24 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("City");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.Invoice", b =>
+                {
+                    b.HasOne("Nexus.Domain.Connection", "Connection")
+                        .WithMany("Invoices")
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Employee", "PaidBy")
+                        .WithMany()
+                        .HasForeignKey("PaidById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Connection");
+
+                    b.Navigation("PaidBy");
+                });
+
             modelBuilder.Entity("Nexus.Domain.OrderEvent", b =>
                 {
                     b.HasOne("Nexus.Domain.Employee", "Actor")
@@ -471,6 +620,25 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .IsRequired();
 
                     b.Navigation("Actor");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.PaymentTransaction", b =>
+                {
+                    b.HasOne("Nexus.Domain.Invoice", "Invoice")
+                        .WithMany("Payments")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Employee", "PaidBy")
+                        .WithMany()
+                        .HasForeignKey("PaidById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("PaidBy");
                 });
 
             modelBuilder.Entity("Nexus.Domain.ServiceFeedback", b =>
@@ -524,6 +692,16 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("Customer");
 
                     b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.Connection", b =>
+                {
+                    b.Navigation("Invoices");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.Invoice", b =>
+                {
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("Nexus.Domain.ServiceOrder", b =>

@@ -32,7 +32,7 @@ import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
 import { getBillingAccount, recordPayment } from '../../services/billingApi';
-import { ApiError, type BillingView } from '../../types/nexus';
+import { ApiError, type BillingView, type RecordPaymentInput } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
   formatBillingError,
@@ -219,7 +219,7 @@ export function BillingPaymentsSection({
     }
   };
 
-  const handleRecordPayment = async (accountId: string) => {
+  const handleRecordPayment = async (accountId: string, input?: RecordPaymentInput) => {
     const normalized = normalizeAccountId(accountId);
     if (!normalized || processingPaymentRef.current || payingAccountId !== null) {
       return;
@@ -230,7 +230,7 @@ export function BillingPaymentsSection({
     setDrawerError(null);
 
     try {
-      const updated = await recordPayment(normalized);
+      const updated = await recordPayment(normalized, input);
       if (!isMountedRef.current) return;
       onRecordUpsert(updated);
       setLastPaidRecord(updated);
@@ -238,7 +238,7 @@ export function BillingPaymentsSection({
         prev && prev.accountId === updated.accountId ? updated : prev,
       );
       toast({
-        body: `Recorded full payment of ${formatUsd(updated.amount)} for ${updated.accountId}.`,
+        body: `Recorded payment of ${formatUsd(input?.amount ?? updated.amount)} for ${updated.accountId}.`,
       });
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -487,7 +487,7 @@ export function BillingPaymentsSection({
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
-        onRecordPayment={(id) => void handleRecordPayment(id)}
+        onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
       />
     </Card>
   );

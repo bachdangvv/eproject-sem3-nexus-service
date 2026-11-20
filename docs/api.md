@@ -1,4 +1,4 @@
-# API contract Nexus Review 1
+# API contract Nexus Review 1 & Financial Billing Engine
 
 Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cookie phiên. Lấy `csrfToken` từ `GET /session`, gửi trong header `X-CSRF-Token` khi gọi POST, PUT hoặc DELETE. Đọc lại session sau đăng nhập hoặc đăng xuất để dùng token của phiên hiện tại. Thời gian trong API trả về theo UTC.
 
@@ -27,7 +27,7 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 | `GET /customers?q=...` | Retail, Admin | Tối đa 100 khách theo mã, tên hoặc điện thoại. Trả mảng Customer. |
 | `POST /customers`, `PUT /customers/{id}` | Retail, Admin | `{ name, phone, address, cityCode }` và các trường tùy chọn → Customer, 201 hoặc 200 |
 | `GET /requests` | Retail | Tối đa 100 Request chờ xác nhận |
-| `POST /requests` | Retail | `{ customerId, planId, hasNexusLandline }` → Request, 201. Gói phải đang hoạt động. |
+| `POST /requests` | Retail | `{ customerId, planId, hasNexusLandline, connectionCount }` → Request, 201. Gói phải đang hoạt động. `connectionCount` mặc định 1. |
 | `POST /requests/{id}/confirm` | Retail | Body trống → Order `Pending`, 201. Lặp lại trả Order hiện có, 200. |
 | `GET /orders?code=...&status=...` | Retail, Technical | Tối đa 100 Order. Hai bộ lọc là tùy chọn. |
 | `GET /orders/{code}` | Retail, Technical | `{ order, history, feedback }` |
@@ -38,7 +38,7 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 ```text
 Customer { id, code, name, phone, address, cityCode }
 Request  { id, customerId, customerName, planId, planName, type, cityCode,
-           address, hasNexusLandline, price, createdAt }
+           address, hasNexusLandline, price, connectionCount, createdAt }
 Order    { code, requestId, status, request, createdAt, accountId, activatedAt }
 History  { status, at, actor, note, distanceOk, serverAvailable, landlineFeasible }
 Feedback { rating, comment, createdAt }
@@ -48,15 +48,26 @@ Feedback { rating, comment, createdAt }
 
 Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `contactPerson`, `customerType` và `status`. FE dùng `id` số làm khóa API và `code` dạng `CUS-000001` để hiển thị.
 
-## Billing và Payment
+## Billing và Payment (Phòng Cước & Quầy Bán Lẻ)
+
+### Billing Department (Role = Billing)
 
 | Method và đường dẫn | Quyền | Kết quả |
 | --- | --- | --- |
-| `GET /billing/accounts/{accountId}` | Billing | Tìm Connection và trả `{ accountId, orderId, customerName, planName, amount, status, paidAt }`. |
-| `POST /billing/accounts/{accountId}` | Billing | Tạo một billing record cho Connection, lưu giá gói tại thời điểm tạo. Trả bản ghi cũ nếu gọi lại. |
-| `POST /billing/accounts/{accountId}/payment` | Billing | Ghi nhận đã thanh toán toàn bộ thủ công, lưu người ghi nhận và thời điểm. Trả 409 nếu chưa có billing record. Gọi lại giữ nguyên thời điểm thanh toán. |
+| `GET /billing/accounts?q=...&status=...&cityCode=...` | Billing | Danh sách tất cả tài khoản kết nối đang hoạt động kèm chi tiết hóa đơn mới nhất và các thanh toán. Hỗ trợ lọc theo từ khóa, trạng thái hóa đơn (`NotBilled`, `Unpaid`, `PartiallyPaid`, `Paid`) và thành phố. |
+| `GET /billing/accounts/{accountId}` | Billing | Tra cứu chi tiết tài khoản theo 16 ký tự Account ID, trả về đầy đủ các mục chi phí (tiền cước gói, cước gọi Local/STD/Mobile, phí thiết bị hỏng, chiết khấu bulk, thuế dịch vụ 12.24%, tiền cọc hoàn lại, dư nợ cũ, tổng nợ, đã trả, còn nợ) và lịch sử giao dịch. |
+| `POST /billing/accounts/{accountId}` | Billing | Tạo hóa đơn chu kỳ mới hoặc lập hóa đơn ban đầu. Body tùy chọn: `{ billingPeriodStart, billingPeriodEnd, localMinutes, stdMinutes, mobileMinutes, equipmentFee, depositAmount }`. Tự động áp dụng chiết khấu số lượng (25%–100%) và thuế dịch vụ 12.24% trên cước chịu thuế. |
+| `POST /billing/accounts/{accountId}/payment` | Billing | Ghi nhận thanh toán tại City Office (toàn bộ hoặc từng phần). Body tùy chọn: `{ amount, note }`. Ghi nhận người thu và kênh thanh toán `"CityOffice"`. |
 
-Các POST không cần body. Trạng thái lần lượt là `NotBilled → Unpaid → Paid`. Account ID không khớp Connection trả 404.
+### Retail Outlet In-Store Billing & Payments (Role = Retail)
+
+| Method và đường dẫn | Quyền | Kết quả |
+| --- | --- | --- |
+| `GET /retail/billing/accounts?q=...&status=...&cityCode=...` | Retail | Tra cứu danh sách tài khoản đã kết nối để phục vụ khách hàng thanh toán tại quầy bán lẻ. |
+| `GET /retail/billing/accounts/{accountId}` | Retail | Xem chi tiết cước tính đến thời điểm hiện tại của thuê bao (till-date billing breakdown). |
+| `POST /retail/billing/accounts/{accountId}/payment` | Retail | Thu tiền cước trực tiếp tại quầy bán lẻ (in-store retail counter). Body tùy chọn: `{ amount, note }`. Ghi nhận người thu và kênh thanh toán `"RetailOutlet"`. |
+
+Các POST hỗ trợ gửi kèm body JSON hoặc body trống (mặc định lấy toàn bộ số dư còn nợ). Trạng thái tài khoản chuyển từ `NotBilled → Unpaid / PartiallyPaid → Paid`.
 
 ## Public tracking
 

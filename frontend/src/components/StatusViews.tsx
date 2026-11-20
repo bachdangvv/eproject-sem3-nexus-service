@@ -152,6 +152,8 @@ export function BillingStatusPill({ status }: { status: BillingStatus }) {
   switch (status) {
     case 'Paid':
       return <StatusLabel variant="success" label="Paid" />;
+    case 'PartiallyPaid':
+      return <StatusLabel variant="warning" label="Partially Paid" />;
     case 'Unpaid':
       return <StatusLabel variant="error" label="Unpaid" />;
     case 'NotBilled':

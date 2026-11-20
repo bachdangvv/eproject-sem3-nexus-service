@@ -74,6 +74,18 @@ public abstract partial class NexusDb
             entity.Property(connection => connection.CityCode).HasMaxLength(3);
         });
 
+        model.Entity<Invoice>(entity =>
+        {
+            entity.Property(invoice => invoice.InvoiceNumber).HasMaxLength(60);
+            entity.Property(invoice => invoice.Status).HasMaxLength(20);
+        });
+
+        model.Entity<PaymentTransaction>(entity =>
+        {
+            entity.Property(payment => payment.Channel).HasMaxLength(30);
+            entity.Property(payment => payment.Note).HasMaxLength(250);
+        });
+
         model.Entity<ServiceFeedback>().Property(entry => entry.Comment).HasMaxLength(600);
     }
 }

@@ -1,10 +1,12 @@
 # Run with PowerShell 7 after dotnet build. Each run uses its own SQLite database.
 param([int]$Port = 5179)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $project = Split-Path -Parent $PSScriptRoot
 $data = Join-Path $project ('data/smoke-' + [Guid]::NewGuid().ToString('N'))
 New-Item -Path $data -ItemType Directory | Out-Null
 $dll = Join-Path $project 'Nexus.Api/bin/Debug/net10.0/Nexus.Api.dll'
+$dotnet = if (Test-Path "$env:USERPROFILE\.dotnet\dotnet.exe") { "$env:USERPROFILE\.dotnet\dotnet.exe" } else { 'dotnet' }
 $origin = "http://127.0.0.1:$Port"
 $previousConnection = $env:ConnectionStrings__Demo
 $server = $null
@@ -19,27 +21,48 @@ function Call($client, [string]$path, [string]$method = 'GET', $body = $null, [i
         Uri = "$origin/api$path"
         Method = $method
         WebSession = $client.Cookies
-        SkipHttpErrorCheck = $true
         TimeoutSec = 15
+        UseBasicParsing = $true
     }
     if ($method -ne 'GET' -and $client.Token) {
         $parameters.Headers = @{ 'X-CSRF-Token' = $client.Token }
     }
     if ($null -ne $body) {
-        $parameters.ContentType = 'application/json'
-        $parameters.Body = ConvertTo-Json -InputObject $body -Compress
+        $parameters.ContentType = 'application/json; charset=utf-8'
+        $parameters.Body = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $body -Compress))
     }
-    $result = Invoke-WebRequest @parameters
-    $content = $result.Content
+    $content = $null
+    $statusCode = 0
+    try {
+        $result = Invoke-WebRequest @parameters
+        $content = $result.Content
+        $statusCode = [int]$result.StatusCode
+    } catch [System.Net.WebException] {
+        $response = $_.Exception.Response
+        if ($null -ne $response) {
+            $statusCode = [int]$response.StatusCode
+            $stream = $response.GetResponseStream()
+            if ($null -ne $stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $content = $reader.ReadToEnd()
+            }
+        } else { throw }
+    }
     if ($content -is [byte[]]) { $content = [Text.Encoding]::UTF8.GetString($content) }
-    if ($result.StatusCode -ne $expected) {
-        throw "$method $path returned $($result.StatusCode), expected $expected. $content"
+    if ($statusCode -ne $expected) {
+        throw "$method $path returned $statusCode, expected $expected. $content"
     }
-    if ($content) { return ConvertFrom-Json -InputObject $content }
+    if ($content) {
+        $parsed = ConvertFrom-Json -InputObject $content
+        if ($null -ne $parsed -and $parsed.PSObject.Properties['value']) {
+            return $parsed.value
+        }
+        return $parsed
+    }
 }
 
 function SignIn([string]$role, [string]$username = "$($role.ToLowerInvariant()).demo", [string]$password = 'Nexus-Demo-2026!') {
-    $client = @{ Cookies = [Microsoft.PowerShell.Commands.WebRequestSession]::new(); Token = $null }
+    $client = @{ Cookies = (New-Object Microsoft.PowerShell.Commands.WebRequestSession); Token = $null }
     $client.Token = (Call $client '/session').csrfToken
     Call $client '/login' 'POST' @{username=$username;password=$password} 204
     $session = Call $client '/session'
@@ -50,19 +73,19 @@ function SignIn([string]$role, [string]$username = "$($role.ToLowerInvariant()).
 
 try {
     $env:ConnectionStrings__Demo = "Data Source=$(Join-Path $data 'smoke.db');Foreign Keys=True"
-    $server = Start-Process -FilePath 'dotnet' -ArgumentList @("`"$dll`"", '--demo', '--urls', $origin) `
+    $server = Start-Process -FilePath $dotnet -ArgumentList @("`"$dll`"", '--demo', '--urls', $origin) `
         -WorkingDirectory (Join-Path $project 'Nexus.Api') -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $data 'server.log') -RedirectStandardError (Join-Path $data 'error.log')
     $ready = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
         if ($server.HasExited) { throw "Server exited. See $data." }
         try {
-            $response = Invoke-WebRequest "$origin/api/session" -TimeoutSec 1
+            $response = Invoke-WebRequest "$origin/api/session" -TimeoutSec 1 -UseBasicParsing
             if ($response.StatusCode -eq 200) { $ready = $true; break }
         } catch { Start-Sleep -Milliseconds 400 }
     }
     Check $ready 'fresh migration and seed'
-    $guest = @{ Cookies = [Microsoft.PowerShell.Commands.WebRequestSession]::new(); Token = $null }
+    $guest = @{ Cookies = (New-Object Microsoft.PowerShell.Commands.WebRequestSession); Token = $null }
     $null = Call $guest '/customers' 'GET' $null 401
     $null = Call $guest '/login' 'POST' @{username='retail.demo';password='Nexus-Demo-2026!'} 400
     Check $true 'unauthenticated access and missing CSRF rejected'
@@ -100,7 +123,8 @@ try {
     $null = Call $admin "/products/$($product.id)" 'DELETE' $null 204
     Check ((Call $admin '/products' | Where-Object id -eq $product.id).active -eq $false) 'product create, edit and archive'
 
-    $customerPayload = @{name='Nguyễn Văn A';phone='0900000001';address='10 Nexus Street';cityCode='101';taxId='0101234567';email='a@example.vn';contactPerson='Nguyen Van A';customerType='Corporate'}
+    $customerName = "$([char]0x004E)$([char]0x0067)$([char]0x0075)$([char]0x0079)$([char]0x1EC5)$([char]0x006E) $([char]0x0056)$([char]0x0103)$([char]0x006E) A"
+    $customerPayload = @{name=$customerName;phone='0900000001';address='10 Nexus Street';cityCode='101';taxId='0101234567';email='a@example.vn';contactPerson='Nguyen Van A';customerType='Corporate'}
     $invalidCustomer = $customerPayload.Clone()
     $invalidCustomer.phone = 'invalid'
     $null = Call $retail '/customers' 'POST' $invalidCustomer 400
@@ -109,7 +133,8 @@ try {
     $customerPayload.address = '12 Nexus Street'
     $customer = Call $retail "/customers/$($customer.id)" 'PUT' $customerPayload
     $byCode = @(Call $retail "/customers?q=$($customer.code)")
-    $byName = @(Call $retail ("/customers?q=" + [uri]::EscapeDataString('NGUYỄN')))
+    $searchTerm = "$([char]0x004E)$([char]0x0047)$([char]0x0055)$([char]0x0059)$([char]0x1EC4)$([char]0x004E)"
+    $byName = @(Call $retail ("/customers?q=" + [uri]::EscapeDataString($searchTerm)))
     Check ($byCode[0].address -eq '12 Nexus Street' -and $byName[0].code -eq $customer.code) 'customer validation, create, edit and search'
     $plans = Call $retail '/plans'
     $bb = $plans | Where-Object type -eq 'B'
@@ -135,7 +160,7 @@ try {
     $tracking = Call $retail "$route"
     $found = @(Call $retail "/orders?code=$($order.code)")
     Check (($tracking.history.status -join ',') -eq 'Pending,Feasible,Connected' -and $found[0].accountId -eq $connected.accountId) 'Retail order search and audit history'
-    $public = @{ Cookies = [Microsoft.PowerShell.Commands.WebRequestSession]::new(); Token = $null }
+    $public = @{ Cookies = (New-Object Microsoft.PowerShell.Commands.WebRequestSession); Token = $null }
     $publicOrder = Call $public "/public/track/order/$($order.code)"
     $publicAccount = Call $public "/public/track/account/$($connected.accountId)"
     Check ($publicOrder.id -eq $order.code -and $publicOrder.accountId -eq $connected.accountId -and
@@ -149,15 +174,29 @@ try {
     $null = Call $billing '/billing/accounts/B101999999999999' 'GET' $null 404
     $lookup = Call $billing $billingRoute
     Check ($lookup.status -eq 'NotBilled' -and $lookup.orderId -eq $order.code) 'Billing resolves the same connected Account ID'
+    $billingList = Call $billing '/billing/accounts'
+    Check (@($billingList).Count -ge 1 -and $billingList[0].accountId -eq $connected.accountId) 'Billing persistent DB accounts list'
+
     $null = Call $billing "$billingRoute/payment" 'POST' $null 409
     $bill = Call $billing $billingRoute 'POST'
-    Check ($bill.amount -eq $bb.price -and $bill.status -eq 'Unpaid') 'billing record uses the selected plan amount'
+    $expectedTotal = [Math]::Round($bb.price * 1.1224, 2) + 500.00 # $225 + $27.54 tax (12.24%) + $500 refundable security deposit
+    Check ($bill.rentalAmount -eq $bb.price -and $bill.depositAmount -eq 500.00 -and $bill.taxAmount -eq 27.54 -and $bill.totalAmount -eq $expectedTotal -and $bill.status -eq 'Unpaid') 'detailed invoice: rental snapshot, deposit, 12.24% tax, and unpaid status'
+
+    # Retail till-date billing view
+    $retailLookup = Call $retail "/retail/billing/accounts/$($connected.accountId)"
+    Check ($retailLookup.status -eq 'Unpaid' -and $retailLookup.totalAmount -eq $expectedTotal) 'Retail till-date billing view'
+
+    # Retail in-store partial payment collection
+    $partialPay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' @{amount=252.54;note='Cash payment at outlet'}
+    Check ($partialPay.status -eq 'PartiallyPaid' -and $partialPay.paidAmount -eq 252.54 -and $partialPay.dueAmount -eq 500.00) 'Retail partial in-store payment collection'
+
+    # Settle remaining balance by Billing
     $paid = Call $billing "$billingRoute/payment" 'POST'
     $paidAgain = Call $billing "$billingRoute/payment" 'POST'
     $billAgain = Call $billing $billingRoute 'POST'
     $stored = Call $billing $billingRoute
     Check ($paid.status -eq 'Paid' -and $paid.paidAt -and $paidAgain.paidAt -eq $paid.paidAt -and
-        $billAgain.paidAt -eq $paid.paidAt -and $stored.paidAt -eq $paid.paidAt) 'payment persists and create/payment retries preserve the original record'
+        $billAgain.paidAt -eq $paid.paidAt -and $stored.paidAt -eq $paid.paidAt -and $stored.dueAmount -eq 0) 'payment persists and create/payment retries preserve the original record'
 
     $dialRequest = Call $retail '/requests' 'POST' @{customerId=$customer.id;planId=$dial.id;hasNexusLandline=$false} 201
     $dialOrder = Call $retail "/requests/$($dialRequest.id)/confirm" 'POST' $null 201
@@ -174,5 +213,5 @@ try {
     throw
 } finally {
     $env:ConnectionStrings__Demo = $previousConnection
-    if ($server -and !$server.HasExited) { Stop-Process -Id $server.Id }
+    if ($server -and !$server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
 }

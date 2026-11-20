@@ -5,7 +5,7 @@ namespace Nexus.Application;
 public sealed record CustomerView(int Id, string Code, string Name, string Phone, string Address, string CityCode,
     string? TaxId, string? Email, string? ContactPerson, string? CustomerType, string Status);
 public sealed record RequestView(int Id, int CustomerId, string CustomerName, int PlanId, string PlanName,
-    string Type, string CityCode, string Address, bool HasNexusLandline, decimal Price, DateTime CreatedAt);
+    string Type, string CityCode, string Address, bool HasNexusLandline, decimal Price, DateTime CreatedAt, int ConnectionCount = 1);
 public sealed record OrderView(string Code, int RequestId, string Status, RequestView Request, DateTime CreatedAt,
     string? AccountId, DateTime? ActivatedAt);
 public sealed record OrderHistoryView(string Status, DateTime At, string Actor, string Note,
@@ -73,11 +73,13 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         if (plan is null || !plan.Active)
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an active service plan.");
 
+        var count = Math.Max(1, input.ConnectionCount ?? 1);
         var request = new ServiceRequest
         {
             Customer = customer, Plan = plan, PlanName = plan.Name, Type = plan.Type,
             CityCode = customer.CityCode, Address = customer.Address,
-            HasNexusLandline = plan.Type == "D" && input.HasNexusLandline, CreatedById = actorId
+            HasNexusLandline = plan.Type == "D" && input.HasNexusLandline, CreatedById = actorId,
+            SnapshotPrice = plan.Price, ConnectionCount = count
         };
         operations.Add(request);
         await operations.SaveChangesAsync();
@@ -188,7 +190,8 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
     private static RequestView ToView(ServiceRequest request) =>
         new(request.Id, request.CustomerId, request.Customer.Name, request.PlanId, request.PlanName,
             request.Type, request.CityCode, request.Address, request.HasNexusLandline,
-            request.Plan.Price, AsUtc(request.CreatedAt));
+            request.SnapshotPrice > 0 ? request.SnapshotPrice : request.Plan.Price, AsUtc(request.CreatedAt),
+            request.ConnectionCount >= 1 ? request.ConnectionCount : 1);
 
     private static OrderView ToView(ServiceOrder order) =>
         new(order.Code, order.RequestId, order.Status.ToString(), ToView(order.Request), AsUtc(order.CreatedAt),

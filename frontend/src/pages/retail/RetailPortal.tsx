@@ -4,15 +4,27 @@ import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Heading } from '@astryxdesign/core/Heading';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
+import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
+import { RetailBillingSection } from './RetailBillingSection';
 import { RetailCustomersSection } from './RetailCustomersSection';
 import { RetailOrdersSection } from './RetailOrdersSection';
 import { RetailRequestsSection } from './RetailRequestsSection';
 import { RETAIL_SECTION_META, type RetailSection } from './retailTypes';
 
+const SECTION_ROUTE_MAP: Record<RetailSection, RoutePathValue> = {
+  customers: RoutePath.RETAIL_CUSTOMERS,
+  requests: RoutePath.RETAIL_REQUESTS,
+  orders: RoutePath.RETAIL_ORDERS,
+  billing: RoutePath.RETAIL_BILLING,
+};
+
 export function RetailPortal({ section }: { section: RetailSection }): JSX.Element {
+  const { navigate } = useRouter();
+
   const [prevSection, setPrevSection] = useState<RetailSection>(section);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [itemCount, setItemCount] = useState<number | null>(null);
@@ -74,6 +86,8 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
         return <RetailRequestsSection key="requests" {...sharedProps} />;
       case 'orders':
         return <RetailOrdersSection key="orders" {...sharedProps} />;
+      case 'billing':
+        return <RetailBillingSection key="billing" {...sharedProps} />;
     }
   };
 
@@ -90,7 +104,22 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
             <Text type="supporting">{meta.subtitle}</Text>
           </VStack>
 
-          <HStack gap={3} vAlign="center">
+          <HStack gap={3} vAlign="center" wrap="wrap">
+            <SegmentedControl
+              label="Retail portal sections"
+              value={section}
+              onChange={(val) => {
+                const target = val as RetailSection;
+                if (target !== section) {
+                  navigate(SECTION_ROUTE_MAP[target]);
+                }
+              }}
+            >
+              <SegmentedControlItem value="customers" label="Customers" />
+              <SegmentedControlItem value="requests" label="Requests" />
+              <SegmentedControlItem value="orders" label="Orders" />
+              <SegmentedControlItem value="billing" label="Billing & Payments" />
+            </SegmentedControl>
             <Badge
               variant="neutral"
               label={itemCount !== null ? `${itemCount} ${meta.countLabel}` : '...'}

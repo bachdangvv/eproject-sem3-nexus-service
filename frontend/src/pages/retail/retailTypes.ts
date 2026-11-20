@@ -8,7 +8,7 @@ import {
   type ServiceTypeCode,
 } from '../../types/nexus';
 
-export type RetailSection = 'customers' | 'requests' | 'orders';
+export type RetailSection = 'customers' | 'requests' | 'orders' | 'billing';
 
 export type CustomerRow = CustomerView & Record<string, unknown>;
 export type RequestRow = RequestView & Record<string, unknown>;
@@ -42,6 +42,13 @@ export const RETAIL_SECTION_META: Record<RetailSection, RetailSectionMeta> = {
     subtitle:
       'Track retail service orders from placement through activation and record customer feedback for Connected orders.',
     countLabel: 'orders',
+  },
+  billing: {
+    title: 'Retail Billing & In-Store Payments',
+    tokenLabel: 'Billing',
+    subtitle:
+      'Look up connected accounts, review till-date billing details, and collect in-store payments.',
+    countLabel: 'accounts',
   },
 };
 

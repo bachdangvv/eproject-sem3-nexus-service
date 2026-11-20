@@ -103,12 +103,65 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     public void Add(ServiceRequest request) => db.Requests.Add(request);
     public void Add(ServiceOrder order) => db.Orders.Add(order);
     public void Add(ServiceFeedback feedback) => db.Feedback.Add(feedback);
-    public void Add(BillingRecord bill) => db.BillingRecords.Add(bill);
+    public void Add(Invoice invoice) => db.Invoices.Add(invoice);
+    public void Add(PaymentTransaction payment) => db.Payments.Add(payment);
 
-    public Task<BillingRecord?> FindBillAsync(long connectionId) => db.BillingRecords.FindAsync(connectionId).AsTask();
+    public Task<Invoice?> FindInvoiceAsync(long invoiceId) =>
+        db.Invoices.Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(i => i.PaidBy).FirstOrDefaultAsync(i => i.Id == invoiceId);
 
-    public Task<BillingRecord?> ReadBillAsync(long connectionId) =>
-        db.BillingRecords.AsNoTracking().SingleOrDefaultAsync(bill => bill.ConnectionId == connectionId);
+    public Task<Invoice?> FindLatestInvoiceAsync(long connectionId) =>
+        db.Invoices.Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(i => i.PaidBy).Where(i => i.ConnectionId == connectionId)
+            .OrderByDescending(i => i.Id).FirstOrDefaultAsync();
+
+    public Task<Invoice?> ReadLatestInvoiceAsync(long connectionId) =>
+        db.Invoices.AsNoTracking().Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(i => i.PaidBy).Where(i => i.ConnectionId == connectionId)
+            .OrderByDescending(i => i.Id).FirstOrDefaultAsync();
+
+    public async Task<IReadOnlyList<Invoice>> ListInvoicesAsync(long connectionId) =>
+        await db.Invoices.AsNoTracking().Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(i => i.PaidBy).Where(i => i.ConnectionId == connectionId)
+            .OrderByDescending(i => i.Id).ToListAsync();
+
+    public async Task<IReadOnlyList<ServiceOrder>> ListConnectedOrdersAsync(string? q, string? status, string? cityCode)
+    {
+        var query = db.Orders.AsNoTracking()
+            .Include(o => o.Request).ThenInclude(r => r.Customer)
+            .Include(o => o.Request).ThenInclude(r => r.Plan)
+            .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
+                .ThenInclude(i => i.PaidBy)
+            .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
+                .ThenInclude(i => i.Payments)
+            .Where(o => o.Status == OrderStatus.Connected && o.Connection != null);
+
+        if (!string.IsNullOrWhiteSpace(cityCode))
+            query = query.Where(o => o.Connection!.CityCode == cityCode);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim().ToUpperInvariant();
+            query = query.Where(o =>
+                o.Connection!.AccountId.Contains(term) ||
+                o.Request.Customer.SearchName.Contains(term) ||
+                o.Request.Customer.Phone.Contains(term));
+        }
+
+        var orders = await query.OrderByDescending(o => o.Connection!.Id).Take(100).ToListAsync();
+
+        if (!string.IsNullOrWhiteSpace(status) && !status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            orders = orders.Where(o =>
+            {
+                var latest = o.Connection?.Invoices.OrderByDescending(i => i.Id).FirstOrDefault();
+                var s = latest == null ? "NotBilled" : latest.Status;
+                return s.Equals(status, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        }
+
+        return orders;
+    }
 
     public async Task SaveChangesAsync()
     {

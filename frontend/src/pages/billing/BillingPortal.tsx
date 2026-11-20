@@ -9,6 +9,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
+import { getBillingAccounts } from '../../services/billingApi';
 import { getCities } from '../../services/catalogApi';
 import type { BillingView } from '../../types/nexus';
 import { BillingAccountsSection } from './BillingAccountsSection';
@@ -75,10 +76,31 @@ export function BillingPortal({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => getBillingAccounts())
+      .then((data) => {
+        if (!cancelled && isMountedRef.current) {
+          setRecords(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTrigger]);
+
   const handleRecordUpsert = useCallback((record: BillingView) => {
     setRecords((prev) => {
-      const rest = prev.filter((item) => item.accountId !== record.accountId);
-      return [record, ...rest];
+      const index = prev.findIndex((item) => item.accountId === record.accountId);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = record;
+        return next;
+      }
+      return [record, ...prev];
     });
   }, []);
 

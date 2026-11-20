@@ -98,29 +98,37 @@ export function computeBillAmounts(params: {
   const depositPerLine = params.includeSecurityDeposit ? SECURITY_DEPOSIT_USD[params.connectionType] : 0;
   const securityDepositGrossUsd = roundUsd(depositPerLine * qty);
   const rentalTotalUsd = roundUsd(params.planRentalUsd * qty);
-  const discountableBase = roundUsd(securityDepositGrossUsd + params.advanceAdjustmentUsd);
-  const bulkDiscountAmountUsd = roundUsd((discountableBase * discountPercent) / 100);
 
-  const subtotalBeforeTaxUsd = roundUsd(
-    Math.max(
-      0,
-      rentalTotalUsd +
-        params.usageChargesUsd +
-        securityDepositGrossUsd +
-        params.advanceAdjustmentUsd -
-        bulkDiscountAmountUsd +
-        params.equipmentReplacementUsd +
-        params.previousArrearsUsd,
-    ),
+  // Bulk discount applies to advance rental and security deposit
+  const discountOnRental = roundUsd((rentalTotalUsd * discountPercent) / 100);
+  const discountOnDeposit = roundUsd((securityDepositGrossUsd * discountPercent) / 100);
+  const bulkDiscountAmountUsd = roundUsd(discountOnRental + discountOnDeposit);
+
+  const netRentalUsd = roundUsd(rentalTotalUsd - discountOnRental);
+  const netDepositUsd = roundUsd(securityDepositGrossUsd - discountOnDeposit);
+
+  // 12.24% Service tax applies ONLY to taxable services (rental net of discount, usage, equipment)
+  // Refundable security deposit is strictly non-taxable
+  const taxableServicesUsd = roundUsd(
+    Math.max(0, netRentalUsd + params.usageChargesUsd + params.equipmentReplacementUsd),
   );
-  const serviceTaxUsd = roundUsd(subtotalBeforeTaxUsd * SERVICE_TAX_RATE);
-  const totalBilledUsd = roundUsd(subtotalBeforeTaxUsd + serviceTaxUsd);
+  const serviceTaxUsd = roundUsd(taxableServicesUsd * SERVICE_TAX_RATE);
+  const subtotalBeforeTaxUsd = roundUsd(taxableServicesUsd + netDepositUsd + params.previousArrearsUsd);
+  const totalBilledUsd = roundUsd(
+    taxableServicesUsd +
+      serviceTaxUsd +
+      netDepositUsd +
+      params.previousArrearsUsd +
+      params.advanceAdjustmentUsd,
+  );
 
   return {
     discountPercent,
     securityDepositGrossUsd,
     rentalTotalUsd,
     bulkDiscountAmountUsd,
+    netDepositUsd,
+    taxableServicesUsd,
     subtotalBeforeTaxUsd,
     serviceTaxUsd,
     totalBilledUsd,

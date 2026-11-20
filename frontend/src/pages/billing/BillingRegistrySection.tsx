@@ -37,7 +37,12 @@ import {
   getBillingAccount,
   recordPayment,
 } from '../../services/billingApi';
-import { ApiError, type BillingView } from '../../types/nexus';
+import {
+  ApiError,
+  type BillingView,
+  type CreateInvoiceInput,
+  type RecordPaymentInput,
+} from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
   BILLING_STATUS_FILTER_ITEMS,
@@ -207,7 +212,7 @@ export function BillingRegistrySection({
     resetKey: `${statusFilter}::${searchInput.trim().toLowerCase()}`,
   });
 
-  const handleCreateBill = async (accountId: string) => {
+  const handleCreateBill = async (accountId: string, input?: CreateInvoiceInput) => {
     const normalized = normalizeAccountId(accountId);
     if (!normalized || generatingBillRef.current || processingPaymentRef.current) {
       return;
@@ -218,7 +223,7 @@ export function BillingRegistrySection({
     setDrawerError(null);
 
     try {
-      const updated = await createBillingRecord(normalized);
+      const updated = await createBillingRecord(normalized, input);
       if (!isMountedRef.current) return;
       onRecordUpsert(updated);
       setDrawerRecord((prev) =>
@@ -246,7 +251,7 @@ export function BillingRegistrySection({
     }
   };
 
-  const handleRecordPayment = async (accountId: string) => {
+  const handleRecordPayment = async (accountId: string, input?: RecordPaymentInput) => {
     const normalized = normalizeAccountId(accountId);
     if (!normalized || processingPaymentRef.current || generatingBillRef.current) {
       return;
@@ -257,14 +262,14 @@ export function BillingRegistrySection({
     setDrawerError(null);
 
     try {
-      const updated = await recordPayment(normalized);
+      const updated = await recordPayment(normalized, input);
       if (!isMountedRef.current) return;
       onRecordUpsert(updated);
       setDrawerRecord((prev) =>
         prev && prev.accountId === updated.accountId ? updated : prev,
       );
       toast({
-        body: `Recorded full payment of ${formatUsd(updated.amount)} for ${updated.accountId}.`,
+        body: `Recorded payment of ${formatUsd(input?.amount ?? updated.amount)} for ${updated.accountId}.`,
       });
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -565,8 +570,8 @@ export function BillingRegistrySection({
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
-        onCreateBill={(id) => void handleCreateBill(id)}
-        onRecordPayment={(id) => void handleRecordPayment(id)}
+        onCreateBill={(id, input) => void handleCreateBill(id, input)}
+        onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
       />
     </VStack>
   );

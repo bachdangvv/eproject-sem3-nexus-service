@@ -49,6 +49,9 @@ public sealed class ServicePlan
     public required string Description { get; set; }
     public decimal Price { get; set; }
     public bool Active { get; set; } = true;
+    public decimal LocalCallRate { get; set; }
+    public decimal StdCallRate { get; set; }
+    public decimal MobileMsgRate { get; set; }
 }
 
 public sealed class Product
@@ -72,6 +75,8 @@ public sealed class ServiceRequest
     public required string CityCode { get; set; }
     public required string Address { get; set; }
     public bool HasNexusLandline { get; set; }
+    public decimal SnapshotPrice { get; set; }
+    public int ConnectionCount { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int CreatedById { get; set; }
     public bool Confirmed { get; private set; }
@@ -172,14 +177,75 @@ public sealed class Connection
     public required string CityCode { get; set; }
     public string AccountId => $"{Type}{CityCode}{Id:D12}";
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
+    public List<Invoice> Invoices { get; set; } = [];
 }
 
-public sealed class BillingRecord
+public static class FinancialConstants
 {
+    public const decimal ServiceTaxRate = 0.1224m; // 12.24% government service tax
+
+    public static decimal GetSecurityDeposit(string type) => type switch
+    {
+        "D" => 325m, // Dial-up refundable security deposit
+        "B" => 500m, // Broadband refundable security deposit
+        "T" => 250m, // Landline refundable security deposit
+        _ => 0m
+    };
+
+    public static int GetBulkDiscountPercent(int connectionCount)
+    {
+        var qty = Math.Max(1, connectionCount);
+        if (qty > 50) return 100;
+        if (qty >= 25) return 75;
+        if (qty >= 15) return 50;
+        if (qty >= 10) return 25;
+        return 0;
+    }
+}
+
+public sealed class Invoice
+{
+    public long Id { get; set; }
     public long ConnectionId { get; set; }
-    public decimal Amount { get; set; }
+    public Connection Connection { get; set; } = null!;
+    public string InvoiceNumber { get; set; } = "";
+    public DateTime BillingPeriodStart { get; set; } = DateTime.UtcNow;
+    public DateTime BillingPeriodEnd { get; set; } = DateTime.UtcNow.AddMonths(1);
+    public decimal RentalAmount { get; set; }
+    public decimal LocalMinutes { get; set; }
+    public decimal StdMinutes { get; set; }
+    public decimal MobileMinutes { get; set; }
+    public decimal CallUsageAmount { get; set; }
+    public decimal EquipmentFee { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public int DiscountPercent { get; set; }
+    public decimal TaxRate { get; set; } = FinancialConstants.ServiceTaxRate;
+    public decimal TaxAmount { get; set; }
+    public decimal DepositAmount { get; set; }
+    public decimal PreviousDueBalance { get; set; }
+    public decimal TotalAmount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public decimal DueAmount { get; set; }
+    public string Status { get; set; } = "Unpaid"; // Unpaid, PartiallyPaid, Paid
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? PaidAt { get; set; }
     public int? PaidById { get; set; }
+    public Employee? PaidBy { get; set; }
+    public List<PaymentTransaction> Payments { get; set; } = [];
+}
+
+public sealed class PaymentTransaction
+{
+    public long Id { get; set; }
+    public long InvoiceId { get; set; }
+    public Invoice Invoice { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public DateTime PaidAt { get; set; } = DateTime.UtcNow;
+    public int PaidById { get; set; }
+    public Employee PaidBy { get; set; } = null!;
+    public string Channel { get; set; } = "CityOffice"; // CityOffice | RetailOutlet
+    public string? Note { get; set; }
 }
 
 public sealed class ServiceFeedback

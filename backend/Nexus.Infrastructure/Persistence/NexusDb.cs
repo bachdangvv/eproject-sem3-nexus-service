@@ -15,7 +15,8 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
     public DbSet<ServiceOrder> Orders => Set<ServiceOrder>();
     public DbSet<OrderEvent> OrderEvents => Set<OrderEvent>();
     public DbSet<Connection> Connections => Set<Connection>();
-    public DbSet<BillingRecord> BillingRecords => Set<BillingRecord>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<PaymentTransaction> Payments => Set<PaymentTransaction>();
     public DbSet<ServiceFeedback> Feedback => Set<ServiceFeedback>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -25,15 +26,22 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
         model.Entity<Customer>().HasIndex(customer => customer.Phone);
         model.Entity<Customer>().HasOne(customer => customer.City).WithMany()
             .HasForeignKey(customer => customer.CityCode).OnDelete(DeleteBehavior.Restrict);
-        model.Entity<ServicePlan>().Property(plan => plan.Price).HasPrecision(12, 2);
-        model.Entity<ServiceRequest>().HasOne(request => request.Plan).WithMany()
-            .OnDelete(DeleteBehavior.Restrict);
-        model.Entity<ServiceRequest>().HasOne(request => request.Customer).WithMany()
-            .OnDelete(DeleteBehavior.Restrict);
-        model.Entity<ServiceRequest>().HasOne<Employee>().WithMany()
-            .HasForeignKey(request => request.CreatedById).OnDelete(DeleteBehavior.Restrict);
-        model.Entity<ServiceRequest>().HasOne(request => request.Order).WithOne(order => order.Request)
-            .HasForeignKey<ServiceOrder>(order => order.RequestId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ServicePlan>(plan =>
+        {
+            plan.Property(p => p.Price).HasPrecision(12, 2);
+            plan.Property(p => p.LocalCallRate).HasPrecision(12, 2);
+            plan.Property(p => p.StdCallRate).HasPrecision(12, 2);
+            plan.Property(p => p.MobileMsgRate).HasPrecision(12, 2);
+        });
+        model.Entity<ServiceRequest>(request =>
+        {
+            request.Property(r => r.SnapshotPrice).HasPrecision(12, 2);
+            request.HasOne(r => r.Plan).WithMany().OnDelete(DeleteBehavior.Restrict);
+            request.HasOne(r => r.Customer).WithMany().OnDelete(DeleteBehavior.Restrict);
+            request.HasOne<Employee>().WithMany().HasForeignKey(r => r.CreatedById).OnDelete(DeleteBehavior.Restrict);
+            request.HasOne(r => r.Order).WithOne(order => order.Request)
+                .HasForeignKey<ServiceOrder>(order => order.RequestId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<ServiceOrder>().HasOne(order => order.Connection).WithOne()
             .HasForeignKey<Connection>(connection => connection.OrderId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<ServiceOrder>().HasMany(order => order.History).WithOne()
@@ -47,15 +55,42 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
             table.HasCheckConstraint("CK_Orders_Serial", "Id >= 1 AND Id <= 9999999999"));
         model.Entity<Connection>().ToTable(table =>
             table.HasCheckConstraint("CK_Connections_Serial", "Id >= 1 AND Id <= 999999999999"));
-        model.Entity<BillingRecord>(bill =>
+        model.Entity<Invoice>(invoice =>
         {
-            bill.HasKey(entry => entry.ConnectionId);
-            bill.Property(entry => entry.Amount).HasPrecision(12, 2);
-            bill.Property(entry => entry.PaidAt).IsConcurrencyToken();
-            bill.HasOne<Connection>().WithOne().HasForeignKey<BillingRecord>(entry => entry.ConnectionId)
-                .OnDelete(DeleteBehavior.Restrict);
-            bill.HasOne<Employee>().WithMany().HasForeignKey(entry => entry.PaidById)
-                .OnDelete(DeleteBehavior.Restrict);
+            invoice.HasKey(i => i.Id);
+            invoice.Property(i => i.InvoiceNumber).HasMaxLength(60);
+            invoice.Property(i => i.RentalAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.LocalMinutes).HasPrecision(10, 2);
+            invoice.Property(i => i.StdMinutes).HasPrecision(10, 2);
+            invoice.Property(i => i.MobileMinutes).HasPrecision(10, 2);
+            invoice.Property(i => i.CallUsageAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.EquipmentFee).HasPrecision(12, 2);
+            invoice.Property(i => i.Subtotal).HasPrecision(12, 2);
+            invoice.Property(i => i.DiscountAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.TaxRate).HasPrecision(6, 4);
+            invoice.Property(i => i.TaxAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.DepositAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.PreviousDueBalance).HasPrecision(12, 2);
+            invoice.Property(i => i.TotalAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.PaidAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.DueAmount).HasPrecision(12, 2);
+            invoice.Property(i => i.Status).HasMaxLength(20).IsConcurrencyToken();
+            invoice.Property(i => i.PaidAt).IsConcurrencyToken();
+            invoice.HasOne(i => i.Connection).WithMany(c => c.Invoices)
+                .HasForeignKey(i => i.ConnectionId).OnDelete(DeleteBehavior.Restrict);
+            invoice.HasOne(i => i.PaidBy).WithMany()
+                .HasForeignKey(i => i.PaidById).OnDelete(DeleteBehavior.Restrict);
+            invoice.HasMany(i => i.Payments).WithOne(p => p.Invoice)
+                .HasForeignKey(p => p.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<PaymentTransaction>(payment =>
+        {
+            payment.HasKey(p => p.Id);
+            payment.Property(p => p.Amount).HasPrecision(12, 2);
+            payment.Property(p => p.Channel).HasMaxLength(30);
+            payment.Property(p => p.Note).HasMaxLength(250);
+            payment.HasOne(p => p.PaidBy).WithMany()
+                .HasForeignKey(p => p.PaidById).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<ServiceFeedback>().HasOne(entry => entry.RecordedBy).WithMany()
             .OnDelete(DeleteBehavior.Restrict);
