@@ -3,19 +3,39 @@ import {
   type CityView,
   type CustomerView,
   type EmployeeView,
+  type EquipmentStockView,
   type PlanView,
   type ProductView,
+  type PurchaseOrderView,
+  type RetailShopView,
   type ServiceTypeCode,
   type UserRole,
+  type VendorPaymentMethod,
+  type VendorPaymentView,
+  type VendorView,
 } from '../../types/nexus';
 
-export type AdminSection = 'plans' | 'products' | 'cities' | 'employees' | 'customers';
+export type AdminSection =
+  | 'plans'
+  | 'products'
+  | 'cities'
+  | 'employees'
+  | 'customers'
+  | 'retail-shops'
+  | 'vendors'
+  | 'purchases'
+  | 'vendor-payments';
 
 export type PlanRow = PlanView & Record<string, unknown>;
 export type ProductRow = ProductView & Record<string, unknown>;
 export type CityRow = CityView & Record<string, unknown>;
 export type EmployeeRow = EmployeeView & Record<string, unknown>;
 export type CustomerRow = CustomerView & Record<string, unknown>;
+export type RetailShopRow = RetailShopView & Record<string, unknown>;
+export type VendorRow = VendorView & Record<string, unknown>;
+export type PurchaseOrderRow = PurchaseOrderView & Record<string, unknown>;
+export type VendorPaymentRow = VendorPaymentView & Record<string, unknown>;
+export type EquipmentStockRow = EquipmentStockView & Record<string, unknown>;
 
 export interface AdminSectionMeta {
   title: string;
@@ -55,6 +75,30 @@ export const ADMIN_SECTION_META: Record<AdminSection, AdminSectionMeta> = {
     subtitle: 'Search subscriber records by CUS code, full name, or phone number and inspect telemetry.',
     countLabel: 'customers',
   },
+  'retail-shops': {
+    title: 'Retail Outlets & Shops',
+    tokenLabel: 'Retail Shops',
+    subtitle: 'Manage branch locations, city territories, customer walk-in centers, and outlet phone lines.',
+    countLabel: 'outlets',
+  },
+  vendors: {
+    title: 'Equipment Manufacturing Vendors',
+    tokenLabel: 'Vendors',
+    subtitle: 'Manage telecom hardware suppliers, contact representatives, and vendor procurement accounts.',
+    countLabel: 'vendors',
+  },
+  purchases: {
+    title: 'Hardware Purchase Orders',
+    tokenLabel: 'Purchases',
+    subtitle: 'Procure modems, routers, and installation hardware from vendors and manage inventory receiving.',
+    countLabel: 'purchases',
+  },
+  'vendor-payments': {
+    title: 'Vendor Payments & Settlements',
+    tokenLabel: 'Payments',
+    subtitle: 'Record and track disbursements, bank transfers, cheques, and cash payments for purchase orders.',
+    countLabel: 'payments',
+  },
 };
 
 export interface AdminSectionProps {
@@ -81,6 +125,19 @@ export const STAFF_ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
   { value: 'Billing', label: 'Billing' },
 ];
 
+export const VENDOR_PAYMENT_METHOD_OPTIONS: Array<{ value: VendorPaymentMethod; label: string }> = [
+  { value: 'BankTransfer', label: 'Bank Transfer' },
+  { value: 'Cheque', label: 'Cheque' },
+  { value: 'Cash', label: 'Cash' },
+];
+
+export const PURCHASE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'ALL', label: 'All Orders' },
+  { value: 'Ordered', label: 'Ordered' },
+  { value: 'Received', label: 'Received' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
 export function validatePlanPrice(raw: string):
   | { valid: true; value: number }
   | { valid: false; message: string } {
@@ -100,6 +157,49 @@ export function validatePlanPrice(raw: string):
   }
   if (parsed > MAX_PLAN_PRICE) {
     return { valid: false, message: 'Price must not exceed 9,999,999,999.99.' };
+  }
+  return { valid: true, value: parsed };
+}
+
+export function validatePositiveDecimal(raw: string, label: string):
+  | { valid: true; value: number }
+  | { valid: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { valid: false, message: `${label} is required.` };
+  }
+  if (!PRICE_DECIMAL_REGEX.test(trimmed)) {
+    return {
+      valid: false,
+      message: `Enter a valid ${label.toLowerCase()} ($0.00 or greater) with up to two decimal places.`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { valid: false, message: `${label} must be $0.00 or greater.` };
+  }
+  if (parsed > MAX_PLAN_PRICE) {
+    return { valid: false, message: `${label} must not exceed 9,999,999,999.99.` };
+  }
+  return { valid: true, value: parsed };
+}
+
+export function validatePositiveInteger(raw: string, label: string):
+  | { valid: true; value: number }
+  | { valid: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { valid: false, message: `${label} is required.` };
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return {
+      valid: false,
+      message: `${label} must be a whole positive integer (e.g. 10).`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return { valid: false, message: `${label} must be 0 or greater.` };
   }
   return { valid: true, value: parsed };
 }

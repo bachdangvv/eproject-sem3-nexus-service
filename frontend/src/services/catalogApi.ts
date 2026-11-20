@@ -67,6 +67,8 @@ export function createProduct(input: ProductInput): Promise<ProductView> {
       name: input.name.trim(),
       description: normalizeOptionalString(input.description),
       active: input.active,
+      quantityInStock: input.quantityInStock ?? 0,
+      replacementPrice: input.replacementPrice ?? 0,
     }),
   });
 }
@@ -78,6 +80,8 @@ export function updateProduct(id: number, input: ProductInput): Promise<ProductV
       name: input.name.trim(),
       description: normalizeOptionalString(input.description),
       active: input.active,
+      quantityInStock: input.quantityInStock ?? 0,
+      replacementPrice: input.replacementPrice ?? 0,
     }),
   });
 }

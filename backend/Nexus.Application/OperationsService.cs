@@ -7,7 +7,7 @@ public sealed record CustomerView(int Id, string Code, string Name, string Phone
 public sealed record RequestView(int Id, int CustomerId, string CustomerName, int PlanId, string PlanName,
     string Type, string CityCode, string Address, bool HasNexusLandline, decimal Price, DateTime CreatedAt, int ConnectionCount = 1);
 public sealed record OrderView(string Code, int RequestId, string Status, RequestView Request, DateTime CreatedAt,
-    string? AccountId, DateTime? ActivatedAt);
+    string? AccountId, DateTime? ActivatedAt, int? AssignedProductId = null);
 public sealed record OrderHistoryView(string Status, DateTime At, string Actor, string Note,
     bool? DistanceOk, bool? ServerAvailable, bool? LandlineFeasible);
 public sealed record FeedbackView(int Rating, string Comment, DateTime CreatedAt);
@@ -154,12 +154,22 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         return ToView(order);
     }
 
-    public async Task<Creation<OrderView>> ConnectAsync(string code, int actorId)
+    public async Task<Creation<OrderView>> ConnectAsync(string code, int? productId, int actorId)
     {
         var order = await FindOrderAsync(code);
         if (order.Connection is not null) return new Creation<OrderView>(ToView(order), false);
 
-        order.Activate(actorId);
+        if (productId.HasValue)
+        {
+            var product = await catalog.FindProductAsync(productId.Value);
+            if (product is null || !product.Active)
+                throw new UseCaseException(UseCaseFailure.NotFound, "Equipment not found or inactive.");
+            if (product.QuantityInStock <= 0)
+                throw new UseCaseException(UseCaseFailure.InvalidInput, "Equipment is out of stock.");
+            product.QuantityInStock--;
+        }
+
+        order.Activate(actorId, productId);
         try { await operations.SaveChangesAsync(); }
         catch (StoreWriteException)
         {
@@ -195,7 +205,8 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
 
     private static OrderView ToView(ServiceOrder order) =>
         new(order.Code, order.RequestId, order.Status.ToString(), ToView(order.Request), AsUtc(order.CreatedAt),
-            order.Connection?.AccountId, order.Connection is null ? null : AsUtc(order.Connection.ActivatedAt));
+            order.Connection?.AccountId, order.Connection is null ? null : AsUtc(order.Connection.ActivatedAt),
+            order.Connection?.AssignedProductId);
 
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

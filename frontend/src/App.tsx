@@ -318,6 +318,42 @@ function NexusAppContent() {
             <AdminPortal section="customers" />
           </RoleGuard>
         );
+      case RoutePath.ADMIN_RETAIL_SHOPS:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="retail-shops" />
+          </RoleGuard>
+        );
+      case RoutePath.ADMIN_VENDORS:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="vendors" />
+          </RoleGuard>
+        );
+      case RoutePath.ADMIN_PURCHASES:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="purchases" />
+          </RoleGuard>
+        );
+      case RoutePath.ADMIN_VENDOR_PAYMENTS:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="vendor-payments" />
+          </RoleGuard>
+        );
 
       case RoutePath.RETAIL:
       case RoutePath.RETAIL_CUSTOMERS:
@@ -374,6 +410,15 @@ function NexusAppContent() {
             accessDenied={(role) => <AccessDeniedView currentRole={role} />}
           >
             <TechnicalPortal section="connections" />
+          </RoleGuard>
+        );
+      case RoutePath.TECHNICAL_EQUIPMENT:
+        return (
+          <RoleGuard
+            allowedRole="Technical"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <TechnicalPortal section="equipment" />
           </RoleGuard>
         );
       case RoutePath.TECHNICAL_ORDERS:
@@ -539,33 +584,57 @@ function NexusAppContent() {
               <SideNavSection title="Admin Operations" isHeaderHidden>
                 <SideNavItem
                   label="Service Plans"
-                  icon={isSidebarCollapsed ? <Icon icon="viewColumns" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:plans" /> : undefined}
                   href={RoutePath.ADMIN_PLANS}
                   isSelected={path === RoutePath.ADMIN || path === RoutePath.ADMIN_PLANS}
                 />
                 <SideNavItem
                   label="Products & Equipment"
-                  icon={isSidebarCollapsed ? <Icon icon="wrench" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:products" /> : undefined}
                   href={RoutePath.ADMIN_PRODUCTS}
                   isSelected={path === RoutePath.ADMIN_PRODUCTS}
                 />
                 <SideNavItem
                   label="Territory Cities"
-                  icon={isSidebarCollapsed ? <Icon icon="externalLink" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:cities" /> : undefined}
                   href={RoutePath.ADMIN_CITIES}
                   isSelected={path === RoutePath.ADMIN_CITIES}
                 />
                 <SideNavItem
                   label="Employees"
-                  icon={isSidebarCollapsed ? <Icon icon="checkDouble" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:employees" /> : undefined}
                   href={RoutePath.ADMIN_EMPLOYEES}
                   isSelected={path === RoutePath.ADMIN_EMPLOYEES}
                 />
                 <SideNavItem
                   label="Customers"
-                  icon={isSidebarCollapsed ? <Icon icon="search" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:customers" /> : undefined}
                   href={RoutePath.ADMIN_CUSTOMERS}
                   isSelected={path === RoutePath.ADMIN_CUSTOMERS}
+                />
+                <SideNavItem
+                  label="Retail Outlets"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:shops" /> : undefined}
+                  href={RoutePath.ADMIN_RETAIL_SHOPS}
+                  isSelected={path === RoutePath.ADMIN_RETAIL_SHOPS}
+                />
+                <SideNavItem
+                  label="Vendors"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:vendors" /> : undefined}
+                  href={RoutePath.ADMIN_VENDORS}
+                  isSelected={path === RoutePath.ADMIN_VENDORS}
+                />
+                <SideNavItem
+                  label="Equipment Purchases"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:purchases" /> : undefined}
+                  href={RoutePath.ADMIN_PURCHASES}
+                  isSelected={path === RoutePath.ADMIN_PURCHASES}
+                />
+                <SideNavItem
+                  label="Vendor Payments"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:payments" /> : undefined}
+                  href={RoutePath.ADMIN_VENDOR_PAYMENTS}
+                  isSelected={path === RoutePath.ADMIN_VENDOR_PAYMENTS}
                 />
               </SideNavSection>
             )}
@@ -574,25 +643,25 @@ function NexusAppContent() {
               <SideNavSection title="Retail Outlet" isHeaderHidden>
                 <SideNavItem
                   label="Customers"
-                  icon={isSidebarCollapsed ? <Icon icon="search" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:customers" /> : undefined}
                   href={RoutePath.RETAIL_CUSTOMERS}
                   isSelected={path === RoutePath.RETAIL || path === RoutePath.RETAIL_CUSTOMERS}
                 />
                 <SideNavItem
                   label="Service Requests"
-                  icon={isSidebarCollapsed ? <Icon icon="upload" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:requests" /> : undefined}
                   href={RoutePath.RETAIL_REQUESTS}
                   isSelected={path === RoutePath.RETAIL_REQUESTS}
                 />
                 <SideNavItem
                   label="Orders & Feedback"
-                  icon={isSidebarCollapsed ? <Icon icon="viewColumns" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:orders" /> : undefined}
                   href={RoutePath.RETAIL_ORDERS}
                   isSelected={path === RoutePath.RETAIL_ORDERS}
                 />
                 <SideNavItem
                   label="Billing & Payments"
-                  icon={isSidebarCollapsed ? <Icon icon="check" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:billing" /> : undefined}
                   href={RoutePath.RETAIL_BILLING}
                   isSelected={path === RoutePath.RETAIL_BILLING}
                 />
@@ -603,7 +672,7 @@ function NexusAppContent() {
               <SideNavSection title="Technical Department" isHeaderHidden>
                 <SideNavItem
                   label="Feasibility Assessments"
-                  icon={isSidebarCollapsed ? <Icon icon="wrench" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:assessments" /> : undefined}
                   href={RoutePath.TECHNICAL_ASSESSMENTS}
                   isSelected={
                     path === RoutePath.TECHNICAL || path === RoutePath.TECHNICAL_ASSESSMENTS
@@ -611,13 +680,19 @@ function NexusAppContent() {
                 />
                 <SideNavItem
                   label="Connection Activation"
-                  icon={isSidebarCollapsed ? <Icon icon="checkDouble" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:connections" /> : undefined}
                   href={RoutePath.TECHNICAL_CONNECTIONS}
                   isSelected={path === RoutePath.TECHNICAL_CONNECTIONS}
                 />
                 <SideNavItem
+                  label="Equipment & Maintenance"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:equipment" /> : undefined}
+                  href={RoutePath.TECHNICAL_EQUIPMENT}
+                  isSelected={path === RoutePath.TECHNICAL_EQUIPMENT}
+                />
+                <SideNavItem
                   label="All Orders"
-                  icon={isSidebarCollapsed ? <Icon icon="viewColumns" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:orders" /> : undefined}
                   href={RoutePath.TECHNICAL_ORDERS}
                   isSelected={path === RoutePath.TECHNICAL_ORDERS}
                 />
@@ -628,7 +703,7 @@ function NexusAppContent() {
               <SideNavSection title="Billing Department" isHeaderHidden>
                 <SideNavItem
                   label="Accounts & Invoicing"
-                  icon={isSidebarCollapsed ? <Icon icon="search" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:invoices" /> : undefined}
                   href={RoutePath.BILLING_ACCOUNTS}
                   isSelected={
                     path === RoutePath.BILLING || path === RoutePath.BILLING_ACCOUNTS
@@ -636,13 +711,13 @@ function NexusAppContent() {
                 />
                 <SideNavItem
                   label="Payment Processing"
-                  icon={isSidebarCollapsed ? <Icon icon="check" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:payments" /> : undefined}
                   href={RoutePath.BILLING_PAYMENTS}
                   isSelected={path === RoutePath.BILLING_PAYMENTS}
                 />
                 <SideNavItem
                   label="Billing Registry"
-                  icon={isSidebarCollapsed ? <Icon icon="viewColumns" /> : undefined}
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:registry" /> : undefined}
                   href={RoutePath.BILLING_REGISTRY}
                   isSelected={path === RoutePath.BILLING_REGISTRY}
                 />

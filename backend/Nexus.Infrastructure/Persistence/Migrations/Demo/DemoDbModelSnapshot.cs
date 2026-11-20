@@ -42,6 +42,9 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.Property<DateTime>("ActivatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("AssignedProductId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("CityCode")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -56,6 +59,8 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedProductId");
 
                     b.HasIndex("OrderId")
                         .IsUnique();
@@ -158,6 +163,47 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                         .IsUnique();
 
                     b.ToTable("Employees");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.EquipmentIncident", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ConnectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("IncidentDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RecordedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("ReplacementFee")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Settled")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("RecordedById");
+
+                    b.ToTable("EquipmentIncidents");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Invoice", b =>
@@ -365,9 +411,116 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("QuantityInStock")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("ReplacementPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.PurchaseOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OrderedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderNumber")
+                        .IsUnique();
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("PurchaseOrders");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.RetailShop", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CityCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CityCode");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("RetailShops");
                 });
 
             modelBuilder.Entity("Nexus.Domain.ServiceFeedback", b =>
@@ -540,13 +693,116 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.ToTable("Requests");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.Vendor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContactPerson")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Vendors");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.VendorPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("PaidAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaymentNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PurchaseOrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VendorId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentNumber")
+                        .IsUnique();
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.HasIndex("VendorId");
+
+                    b.ToTable("VendorPayments");
+                });
+
             modelBuilder.Entity("Nexus.Domain.Connection", b =>
                 {
+                    b.HasOne("Nexus.Domain.Product", "AssignedProduct")
+                        .WithMany()
+                        .HasForeignKey("AssignedProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Nexus.Domain.ServiceOrder", null)
                         .WithOne("Connection")
                         .HasForeignKey("Nexus.Domain.Connection", "OrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("AssignedProduct");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Customer", b =>
@@ -558,6 +814,33 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                         .IsRequired();
 
                     b.Navigation("City");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.EquipmentIncident", b =>
+                {
+                    b.HasOne("Nexus.Domain.Connection", "Connection")
+                        .WithMany("Incidents")
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Employee", "RecordedBy")
+                        .WithMany()
+                        .HasForeignKey("RecordedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Connection");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("RecordedBy");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Invoice", b =>
@@ -614,6 +897,36 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.Navigation("PaidBy");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.PurchaseOrder", b =>
+                {
+                    b.HasOne("Nexus.Domain.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.RetailShop", b =>
+                {
+                    b.HasOne("Nexus.Domain.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("City");
+                });
+
             modelBuilder.Entity("Nexus.Domain.ServiceFeedback", b =>
                 {
                     b.HasOne("Nexus.Domain.ServiceOrder", null)
@@ -667,12 +980,38 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.Navigation("Plan");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.VendorPayment", b =>
+                {
+                    b.HasOne("Nexus.Domain.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Payments")
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+
+                    b.Navigation("Vendor");
+                });
+
             modelBuilder.Entity("Nexus.Domain.Connection", b =>
                 {
+                    b.Navigation("Incidents");
+
                     b.Navigation("Invoices");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Invoice", b =>
+                {
+                    b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.PurchaseOrder", b =>
                 {
                     b.Navigation("Payments");
                 });

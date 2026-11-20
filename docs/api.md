@@ -1,4 +1,4 @@
-# API contract Nexus Review 1 & Financial Billing Engine
+# API contract Nexus Review 1 & Financial Billing Engine & Inventory Management
 
 Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cookie phiên. Lấy `csrfToken` từ `GET /session`, gửi trong header `X-CSRF-Token` khi gọi POST, PUT hoặc DELETE. Đọc lại session sau đăng nhập hoặc đăng xuất để dùng token của phiên hiện tại. Thời gian trong API trả về theo UTC.
 
@@ -14,8 +14,8 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 | `GET /plans` | Đã đăng nhập | Danh sách `{ id, name, type, description, price, active }`. Admin thấy cả gói ngừng dùng. |
 | `POST /plans`, `PUT /plans/{id}` | Admin | `{ name, type, description, price, active }` → bản ghi 201 hoặc 200. `type` thuộc D/B/T. Giá USD với tối đa hai chữ số thập phân. |
 | `DELETE /plans/{id}` | Admin | 204, chuyển sang ngừng dùng |
-| `GET /products` | Admin | Danh sách `{ id, name, description, active }` |
-| `POST /products`, `PUT /products/{id}` | Admin | `{ name, description, active }` → bản ghi 201 hoặc 200 |
+| `GET /products` | Admin | Danh sách `{ id, name, description, active, quantityInStock, replacementPrice }` |
+| `POST /products`, `PUT /products/{id}` | Admin | `{ name, description, active, quantityInStock, replacementPrice }` → bản ghi 201 hoặc 200 |
 | `DELETE /products/{id}` | Admin | 204, chuyển sang ngừng dùng |
 | `GET /employees` | Admin | Danh sách `{ id, username, displayName, role }` |
 | `POST /employees` | Admin | `{ username, displayName, role, password }` → 201 và thông tin nhân viên |
@@ -32,7 +32,7 @@ Các route dùng tiền tố `/api`, JSON camelCase và xác thực bằng cooki
 | `GET /orders?code=...&status=...` | Retail, Technical | Tối đa 100 Order. Hai bộ lọc là tùy chọn. |
 | `GET /orders/{code}` | Retail, Technical | `{ order, history, feedback }` |
 | `POST /orders/{code}/assessment` | Technical | `{ distanceOk, serverAvailable, landlineFeasible, note }` → Order, 200. Hai trường đầu là boolean bắt buộc. Dial-up chưa có đường dây yêu cầu `landlineFeasible`. |
-| `POST /orders/{code}/connection` | Technical | Body trống → Order `Connected` với Account ID, 201. Lặp lại trả Connection hiện có, 200. |
+| `POST /orders/{code}/connection` | Technical | Body tùy chọn `{ productId }` → Order `Connected` với Account ID, 201 (nếu có `productId` thì cấp thiết bị và giảm tồn kho). Lặp lại trả Connection hiện có, 200. |
 | `POST /orders/{code}/feedback` | Retail | `{ rating, comment }` → phản hồi, 201. Rating 1–5 và Order phải ở `Connected`. |
 
 ```text
@@ -47,6 +47,53 @@ Feedback { rating, comment, createdAt }
 `accountId` và `activatedAt` là `null` cho tới khi cấp kết nối. `status` nhận `Pending`, `Feasible`, `NotFeasible` hoặc `Connected`. Kết quả API dùng `NotFeasible`, còn giao diện hiển thị `Not Feasible`.
 
 Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `contactPerson`, `customerType` và `status`. FE dùng `id` số làm khóa API và `code` dạng `CUS-000001` để hiển thị.
+
+## Quản lý Quầy Bán Lẻ (Retail Shops) & Nhà Cung Cấp (Vendors)
+
+### Retail Shops
+
+| Method và đường dẫn | Quyền | Request và response |
+| --- | --- | --- |
+| `GET /retail-shops?cityCode=...` | Đã đăng nhập | Danh sách `{ id, code, name, cityCode, cityName, address, phone, active }` (chỉ lấy điểm đang hoạt động). |
+| `GET /admin/retail-shops?cityCode=...` | Admin | Danh sách đầy đủ quầy giao dịch (kể cả inactive). Hỗ trợ lọc theo `cityCode`. |
+| `POST /admin/retail-shops` | Admin | `{ code, name, cityCode, address, phone, active }` → 201 RetailShop. |
+| `PUT /admin/retail-shops/{id}` | Admin | `{ code, name, cityCode, address, phone, active }` → 200 RetailShop. |
+| `DELETE /admin/retail-shops/{id}` | Admin | 204 NoContent (chuyển sang không hoạt động). |
+
+### Vendors (Nhà Cung Cấp Thiết Bị)
+
+| Method và đường dẫn | Quyền | Request và response |
+| --- | --- | --- |
+| `GET /admin/vendors` | Admin | Danh sách vendors `{ id, code, name, contactPerson, phone, email, address, active }`. |
+| `POST /admin/vendors` | Admin | `{ code, name, contactPerson, phone, email, address, active }` → 201 Vendor. |
+| `PUT /admin/vendors/{id}` | Admin | `{ code, name, contactPerson, phone, email, address, active }` → 200 Vendor. |
+| `DELETE /admin/vendors/{id}` | Admin | 204 NoContent (chuyển sang không hoạt động). |
+
+## Đơn Hàng Mua Sắm (Purchase Orders) & Thanh Toán Vendor (Vendor Payments)
+
+### Purchase Orders
+
+| Method và đường dẫn | Quyền | Request và response |
+| --- | --- | --- |
+| `GET /admin/purchases?status=...` | Admin | Danh sách đơn mua sắm thiết bị. Lọc theo trạng thái `Ordered`, `Received`, `Cancelled`. |
+| `POST /admin/purchases` | Admin | `{ vendorId, productId, quantity, unitPrice, note }` → 201 PurchaseOrder. Tự động tính `totalAmount = quantity * unitPrice`. |
+| `POST /admin/purchases/{id}/receive` | Admin | 200 PurchaseOrder. Đánh dấu `Received`, ghi nhận `receivedAt`, tự động cộng dồn `quantity` vào `Product.QuantityInStock`. |
+| `POST /admin/purchases/{id}/cancel` | Admin | 200 PurchaseOrder. Hủy đơn mua sắm chưa nhận hàng. |
+
+### Vendor Payments
+
+| Method và đường dẫn | Quyền | Request và response |
+| --- | --- | --- |
+| `GET /admin/vendor-payments?purchaseOrderId=...` | Admin | Danh sách các khoản thanh toán cho nhà cung cấp, hỗ trợ lọc theo đơn mua hàng. |
+| `POST /admin/vendor-payments` | Admin | `{ purchaseOrderId, amount, method, reference, note }` → 201 VendorPayment (`method`: `BankTransfer`, `Cheque`, `Cash`). |
+
+## Kỹ Thuật: Quản Lý Thiết Bị & Sự Cố Thiết Bị Hỏng (Technical Equipment & Incidents)
+
+| Method và đường dẫn | Quyền | Request và response |
+| --- | --- | --- |
+| `GET /technical/equipment` | Technical, Admin | Danh sách thiết bị và tồn kho `{ id, name, description, active, quantityInStock, replacementPrice, pendingAllocations, totalAllocated }`. |
+| `GET /technical/incidents?settled=...` | Technical, Admin | Danh sách sự cố thiết bị hư hỏng `{ id, connectionId, accountId, customerName, productId, productName, incidentDate, description, replacementFee, recordedBy, settled }`. |
+| `POST /technical/incidents` | Technical | `{ accountId, productId, description, replacementFee }` → 201 EquipmentIncident. Ghi nhận sự cố hư hỏng thiết bị, chi phí thay thế sẽ được tính vào hóa đơn cước kỳ tiếp theo. |
 
 ## Billing và Payment (Phòng Cước & Quầy Bán Lẻ)
 

@@ -32,8 +32,16 @@ public static class OperationsEndpoints
 
         technical.MapPost("/orders/{code}/assessment", (string code, AssessmentInput input, OperationsService service, ClaimsPrincipal actor) =>
             service.AssessAsync(code, input, ActorId(actor)));
-        technical.MapPost("/orders/{code}/connection", async (string code, OperationsService service, ClaimsPrincipal actor) =>
-            CreatedOrExisting(await service.ConnectAsync(code, ActorId(actor))));
+        technical.MapPost("/orders/{code}/connection", async (string code, HttpContext httpContext, OperationsService service, ClaimsPrincipal actor) =>
+        {
+            int? productId = null;
+            if (httpContext.Request.HasJsonContentType())
+            {
+                var input = await httpContext.Request.ReadFromJsonAsync<ConnectInput>();
+                productId = input?.ProductId;
+            }
+            return CreatedOrExisting(await service.ConnectAsync(code, productId, ActorId(actor)));
+        });
     }
 
     private static int ActorId(ClaimsPrincipal actor) => int.Parse(actor.FindFirstValue(ClaimTypes.NameIdentifier)!);

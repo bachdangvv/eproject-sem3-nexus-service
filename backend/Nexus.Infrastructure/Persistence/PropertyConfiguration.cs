@@ -48,6 +48,50 @@ public abstract partial class NexusDb
         {
             entity.Property(product => product.Name).HasMaxLength(100);
             entity.Property(product => product.Description).HasMaxLength(240);
+            entity.Property(product => product.ReplacementPrice).HasPrecision(12, 2);
+        });
+
+        model.Entity<RetailShop>(entity =>
+        {
+            entity.Property(s => s.Code).HasMaxLength(30);
+            entity.Property(s => s.Name).HasMaxLength(120);
+            entity.Property(s => s.CityCode).HasMaxLength(3);
+            entity.Property(s => s.Address).HasMaxLength(240);
+            entity.Property(s => s.Phone).HasMaxLength(20);
+        });
+
+        model.Entity<Vendor>(entity =>
+        {
+            entity.Property(v => v.Code).HasMaxLength(30);
+            entity.Property(v => v.Name).HasMaxLength(120);
+            entity.Property(v => v.ContactPerson).HasMaxLength(120);
+            entity.Property(v => v.Phone).HasMaxLength(20);
+            entity.Property(v => v.Email).HasMaxLength(160);
+            entity.Property(v => v.Address).HasMaxLength(240);
+        });
+
+        model.Entity<PurchaseOrder>(entity =>
+        {
+            entity.Property(p => p.OrderNumber).HasMaxLength(30);
+            entity.Property(p => p.Status).HasMaxLength(20).IsConcurrencyToken();
+            entity.Property(p => p.UnitPrice).HasPrecision(12, 2);
+            entity.Property(p => p.TotalAmount).HasPrecision(12, 2);
+            entity.Property(p => p.Note).HasMaxLength(500);
+        });
+
+        model.Entity<VendorPayment>(entity =>
+        {
+            entity.Property(p => p.PaymentNumber).HasMaxLength(30);
+            entity.Property(p => p.Amount).HasPrecision(12, 2);
+            entity.Property(p => p.Method).HasMaxLength(30);
+            entity.Property(p => p.Reference).HasMaxLength(100);
+            entity.Property(p => p.Note).HasMaxLength(500);
+        });
+
+        model.Entity<EquipmentIncident>(entity =>
+        {
+            entity.Property(i => i.Description).HasMaxLength(500);
+            entity.Property(i => i.ReplacementFee).HasPrecision(12, 2);
         });
 
         model.Entity<ServiceRequest>(entity =>

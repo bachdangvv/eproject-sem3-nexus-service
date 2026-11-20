@@ -207,6 +207,96 @@ try {
     $null = Call $technical "$dialRoute/connection" 'POST' $null 409
     $null = Call $retail "$dialRoute/feedback" 'POST' @{rating=5;comment='Too early'} 409
     Check ($rejected.status -eq 'NotFeasible' -and $dialOrder.code -ceq 'D0000000002') 'Dial-up landline check, rejection and second serial'
+
+    # ========================================================
+    # Group 2: Retail Shops, Vendors & Equipment Inventory
+    # ========================================================
+
+    # 1. Retail Shops
+    $initialShops = Call $admin '/admin/retail-shops'
+    Check (@($initialShops).Count -ge 3) 'seeded retail shops present'
+    $shopPayload = @{code='RS-TEST-01';name='Smoke Test Outlet';cityCode='101';address='999 Test Blvd';phone='02812345678';active=$true}
+    $createdShop = Call $admin '/admin/retail-shops' 'POST' $shopPayload 201
+    Check ($createdShop.code -eq 'RS-TEST-01' -and $createdShop.name -eq 'Smoke Test Outlet') 'retail shop creation'
+    $lookupBefore = @(Call $retail '/retail-shops?cityCode=101')
+    Check (@($lookupBefore | Where-Object code -eq 'RS-TEST-01').Count -eq 1) 'retail shop public/staff city lookup'
+    $updatedShop = Call $admin "/admin/retail-shops/$($createdShop.id)" 'PUT' @{code='RS-TEST-01';name='Smoke Test Outlet Updated';cityCode='101';address='999 Test Blvd Suite 2';phone='02812345678';active=$true}
+    Check ($updatedShop.name -eq 'Smoke Test Outlet Updated') 'retail shop update'
+    $null = Call $admin "/admin/retail-shops/$($createdShop.id)" 'DELETE' $null 204
+    $lookupAfter = @(Call $retail '/retail-shops?cityCode=101')
+    Check (@($lookupAfter | Where-Object code -eq 'RS-TEST-01').Count -eq 0) 'retail shop soft delete excludes from active lookup'
+
+    # 2. Vendors
+    $initialVendors = Call $admin '/admin/vendors'
+    Check (@($initialVendors).Count -ge 3) 'seeded vendors present'
+    $vendorPayload = @{code='VND-SMOKE';name='Smoke Systems Ltd';contactPerson='David Test';phone='0987654321';email='david@smokesystems.vn';address='456 Vendor Way';active=$true}
+    $createdVendor = Call $admin '/admin/vendors' 'POST' $vendorPayload 201
+    Check ($createdVendor.code -eq 'VND-SMOKE' -and $createdVendor.contactPerson -eq 'David Test') 'vendor creation'
+    $updatedVendor = Call $admin "/admin/vendors/$($createdVendor.id)" 'PUT' @{code='VND-SMOKE';name='Smoke Systems Ltd Global';contactPerson='David Test';phone='0987654321';email='david@smokesystems.vn';address='456 Vendor Way';active=$true}
+    Check ($updatedVendor.name -eq 'Smoke Systems Ltd Global') 'vendor update'
+    $null = Call $admin "/admin/vendors/$($createdVendor.id)" 'DELETE' $null 204
+    Check ((Call $admin '/admin/vendors' | Where-Object id -eq $createdVendor.id).active -eq $false) 'vendor soft delete'
+
+    # 3. Product Equipment Stock & Purchases Flow
+    $invProduct = Call $admin '/products' 'POST' @{name='Fiber Optical ONT Unit';description='Dual band smoke test ONT';active=$true;quantityInStock=10;replacementPrice=85.00} 201
+    Check ($invProduct.quantityInStock -eq 10 -and $invProduct.replacementPrice -eq 85.00) 'product created with initial stock and replacement price'
+
+    # Place purchase order
+    $poPayload = @{vendorId=$initialVendors[0].id;productId=$invProduct.id;quantity=20;unitPrice=60.00;note='Smoke replenishment order'}
+    $po = Call $admin '/admin/purchases' 'POST' $poPayload 201
+    Check ($po.status -eq 'Ordered' -and $po.orderNumber -like 'PO-*' -and $po.totalAmount -eq 1200.00 -and $po.paidAmount -eq 0) 'purchase order placed'
+
+    # Receive purchase order -> increases stock automatically
+    $receivedPo = Call $admin "/admin/purchases/$($po.id)/receive" 'POST' $null 200
+    Check ($receivedPo.status -eq 'Received' -and $receivedPo.receivedAt) 'purchase order marked received'
+    $reloadedProduct = (Call $admin '/products' | Where-Object id -eq $invProduct.id)
+    Check ($reloadedProduct.quantityInStock -eq 30) 'product stock automatically incremented on PO receive (10 + 20 = 30)'
+
+    # Cancel purchase order flow
+    $po2 = Call $admin '/admin/purchases' 'POST' @{vendorId=$initialVendors[0].id;productId=$invProduct.id;quantity=5;unitPrice=60.00} 201
+    $cancelledPo = Call $admin "/admin/purchases/$($po2.id)/cancel" 'POST' $null 200
+    Check ($cancelledPo.status -eq 'Cancelled') 'purchase order cancellation'
+    $null = Call $admin "/admin/purchases/$($po2.id)/receive" 'POST' $null 409
+    Check $true 'cancelled purchase order cannot be received'
+
+    # 4. Vendor Payments
+    $paymentPayload = @{purchaseOrderId=$po.id;amount=700.00;method='BankTransfer';reference='VCB-SMOKE-01';note='Partial payment for PO'}
+    $payment = Call $admin '/admin/vendor-payments' 'POST' $paymentPayload 201
+    Check ($payment.paymentNumber -like 'VP-*' -and $payment.amount -eq 700.00 -and $payment.method -eq 'BankTransfer') 'vendor payment recorded'
+    $poAfterPay = (Call $admin '/admin/purchases' | Where-Object id -eq $po.id)
+    Check ($poAfterPay.paidAmount -eq 700.00 -and $poAfterPay.paymentStatus -eq 'PartiallyPaid') 'purchase order paidAmount and PartiallyPaid status updated'
+    # Payment exceeding remaining balance rejected
+    $null = Call $admin '/admin/vendor-payments' 'POST' @{purchaseOrderId=$po.id;amount=600.00;method='Cash'} 400
+    Check $true 'payment exceeding remaining balance ($500) rejected'
+
+    # 5. Technical Equipment Allocation & Stock Decrement
+    $equipStock = Call $technical '/technical/equipment'
+    Check (@($equipStock).Count -ge 4) 'technical equipment stock overview'
+    $stockItem = $equipStock | Where-Object id -eq $invProduct.id
+    Check ($stockItem.quantityInStock -eq 30) 'technical equipment reflects current stock'
+
+    # Create new order, assess Feasible, and activate with equipment allocation
+    $equipRequest = Call $retail '/requests' 'POST' @{customerId=$customer.id;planId=$bb.id;hasNexusLandline=$false} 201
+    $equipOrder = Call $retail "/requests/$($equipRequest.id)/confirm" 'POST' $null 201
+    $equipRoute = "/orders/$($equipOrder.code)"
+    $null = Call $technical "$equipRoute/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
+    $equipConnected = Call $technical "$equipRoute/connection" 'POST' @{productId=$invProduct.id} 201
+    Check ($equipConnected.status -eq 'Connected' -and $equipConnected.assignedProductId -eq $invProduct.id) 'connection activated with equipment allocation'
+    $productAfterAllocation = (Call $admin '/products' | Where-Object id -eq $invProduct.id)
+    Check ($productAfterAllocation.quantityInStock -eq 29) 'product stock automatically decremented on connection allocation (30 - 1 = 29)'
+
+    # 6. Customer Damaged Equipment Incident Recording
+    $incidentPayload = @{
+        accountId = $equipConnected.accountId
+        productId = $invProduct.id
+        description = 'Customer router damaged by electrical power surge during storm'
+        replacementFee = 85.00
+    }
+    $incident = Call $technical '/technical/incidents' 'POST' $incidentPayload 201
+    Check ($incident.accountId -eq $equipConnected.accountId -and $incident.productId -eq $invProduct.id -and $incident.replacementFee -eq 85.00 -and $incident.settled -eq $false) 'damaged equipment incident recorded'
+    $incidentsList = Call $technical '/technical/incidents'
+    Check (@($incidentsList | Where-Object id -eq $incident.id).Count -eq 1) 'technical incidents list includes recorded incident'
+
     Write-Host 'Smoke suite passed.'
 } catch {
     Write-Host "Logs and isolated test data are in $data"

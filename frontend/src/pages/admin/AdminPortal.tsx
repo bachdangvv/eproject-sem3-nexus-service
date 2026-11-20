@@ -13,6 +13,10 @@ import { CustomersSection } from './CustomersSection';
 import { EmployeesSection } from './EmployeesSection';
 import { PlansSection } from './PlansSection';
 import { ProductsSection } from './ProductsSection';
+import { PurchasesSection } from './PurchasesSection';
+import { RetailShopsSection } from './RetailShopsSection';
+import { VendorPaymentsSection } from './VendorPaymentsSection';
+import { VendorsSection } from './VendorsSection';
 
 export function AdminPortal({ section }: { section: AdminSection }): JSX.Element {
   const [prevSection, setPrevSection] = useState<AdminSection>(section);
@@ -71,6 +75,14 @@ export function AdminPortal({ section }: { section: AdminSection }): JSX.Element
         return <EmployeesSection key="employees" {...sharedProps} />;
       case 'customers':
         return <CustomersSection key="customers" {...sharedProps} />;
+      case 'retail-shops':
+        return <RetailShopsSection key="retail-shops" {...sharedProps} />;
+      case 'vendors':
+        return <VendorsSection key="vendors" {...sharedProps} />;
+      case 'purchases':
+        return <PurchasesSection key="purchases" {...sharedProps} />;
+      case 'vendor-payments':
+        return <VendorPaymentsSection key="vendor-payments" {...sharedProps} />;
     }
   };
 

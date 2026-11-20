@@ -35,6 +35,7 @@ builder.Services.AddScoped<StaffService>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<OperationsService>();
 builder.Services.AddScoped<BillingService>();
+builder.Services.AddScoped<InventoryService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -93,5 +94,6 @@ api.MapStaff();
 api.MapCatalog();
 api.MapOperations();
 api.MapBilling();
+api.MapInventory();
 api.MapPublic();
 app.Run();

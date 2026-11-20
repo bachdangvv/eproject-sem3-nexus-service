@@ -4,7 +4,7 @@ namespace Nexus.Application;
 
 public sealed record CityView(string Code, string Name);
 public sealed record PlanView(int Id, string Name, string Type, string Description, decimal Price, bool Active);
-public sealed record ProductView(int Id, string Name, string Description, bool Active);
+public sealed record ProductView(int Id, string Name, string Description, bool Active, int QuantityInStock, decimal ReplacementPrice);
 
 public sealed class CatalogService(ICatalogStore store)
 {
@@ -70,7 +70,15 @@ public sealed class CatalogService(ICatalogStore store)
 
     public async Task<ProductView> CreateProductAsync(ProductInput input)
     {
-        var product = new Product { Name = input.Name.Trim(), Description = input.Description?.Trim() ?? "", Active = input.Active };
+        ValidatePrice(input.ReplacementPrice);
+        var product = new Product
+        {
+            Name = input.Name.Trim(),
+            Description = input.Description?.Trim() ?? "",
+            Active = input.Active,
+            QuantityInStock = Math.Max(0, input.QuantityInStock),
+            ReplacementPrice = input.ReplacementPrice
+        };
         store.Add(product);
         await store.SaveChangesAsync();
         return ToView(product);
@@ -78,10 +86,13 @@ public sealed class CatalogService(ICatalogStore store)
 
     public async Task<ProductView> UpdateProductAsync(int id, ProductInput input)
     {
+        ValidatePrice(input.ReplacementPrice);
         var product = await FindProductAsync(id);
         product.Name = input.Name.Trim();
         product.Description = input.Description?.Trim() ?? "";
         product.Active = input.Active;
+        product.QuantityInStock = Math.Max(0, input.QuantityInStock);
+        product.ReplacementPrice = input.ReplacementPrice;
         await store.SaveChangesAsync();
         return ToView(product);
     }
@@ -109,5 +120,5 @@ public sealed class CatalogService(ICatalogStore store)
         new(plan.Id, plan.Name, plan.Type, plan.Description, plan.Price, plan.Active);
 
     private static ProductView ToView(Product product) =>
-        new(product.Id, product.Name, product.Description, product.Active);
+        new(product.Id, product.Name, product.Description, product.Active, product.QuantityInStock, product.ReplacementPrice);
 }

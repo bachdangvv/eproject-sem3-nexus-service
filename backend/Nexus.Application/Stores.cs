@@ -49,3 +49,36 @@ public interface IOperationsStore
     void Add(ServiceFeedback feedback);
     Task SaveChangesAsync();
 }
+
+public interface IInventoryStore
+{
+    Task<IReadOnlyList<RetailShop>> ListRetailShopsAsync(string? cityCode, bool includeInactive);
+    Task<RetailShop?> FindRetailShopAsync(int id);
+    Task<bool> RetailShopCodeExistsAsync(string code, int? excludeId = null);
+    void Add(RetailShop shop);
+
+    Task<IReadOnlyList<Vendor>> ListVendorsAsync(bool includeInactive);
+    Task<Vendor?> FindVendorAsync(int id);
+    Task<bool> VendorCodeExistsAsync(string code, int? excludeId = null);
+    void Add(Vendor vendor);
+
+    Task<IReadOnlyList<PurchaseOrder>> ListPurchaseOrdersAsync(string? status);
+    Task<PurchaseOrder?> FindPurchaseOrderAsync(int id);
+    Task<int> NextPurchaseOrderSerialAsync();
+    void Add(PurchaseOrder po);
+
+    Task<IReadOnlyList<VendorPayment>> ListVendorPaymentsAsync(int? purchaseOrderId);
+    Task<int> NextVendorPaymentSerialAsync();
+    void Add(VendorPayment payment);
+
+    Task<IReadOnlyList<Product>> ListEquipmentProductsAsync();
+    Task<int> CountPendingFeasibleOrdersNeedingConnectionAsync();
+    Task<Dictionary<int, int>> GetProductAllocatedCountsAsync();
+    Task<IReadOnlyList<EquipmentIncident>> ListIncidentsAsync(bool? settled);
+    Task<EquipmentIncident?> FindIncidentAsync(int id);
+    Task<Connection?> FindConnectionAsync(long connectionId);
+    Task<Connection?> FindConnectionByAccountIdAsync(string accountId);
+    void Add(EquipmentIncident incident);
+
+    Task SaveChangesAsync();
+}

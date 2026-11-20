@@ -37,6 +37,8 @@ export interface ProductView {
   name: string;
   description: string;
   active: boolean;
+  quantityInStock: number;
+  replacementPrice: number;
 }
 
 export interface EmployeeView {
@@ -83,6 +85,7 @@ export interface OrderView {
   createdAt: string;
   accountId: string | null;
   activatedAt: string | null;
+  assignedProductId?: number | null;
 }
 
 export interface OrderHistoryView {
@@ -211,6 +214,139 @@ export interface ProductInput {
   name: string;
   description?: string | null;
   active: boolean;
+  quantityInStock?: number;
+  replacementPrice?: number;
+}
+
+export interface RetailShopView {
+  id: number;
+  code: string;
+  name: string;
+  cityCode: string;
+  cityName?: string | null;
+  address: string;
+  phone: string;
+  active: boolean;
+}
+
+export interface RetailShopInput {
+  code: string;
+  name: string;
+  cityCode: string;
+  address: string;
+  phone: string;
+  active?: boolean;
+}
+
+export interface VendorView {
+  id: number;
+  code: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  active: boolean;
+}
+
+export interface VendorInput {
+  code: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  active?: boolean;
+}
+
+export type PurchaseOrderStatus = 'Ordered' | 'Received' | 'Cancelled';
+
+export interface PurchaseOrderView {
+  id: number;
+  orderNumber: string;
+  vendorId: number;
+  vendorName: string;
+  productId: number;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  status: PurchaseOrderStatus;
+  orderedAt: string;
+  receivedAt: string | null;
+  note: string | null;
+  paidAmount: number;
+  paymentStatus: 'Unpaid' | 'PartiallyPaid' | 'Paid';
+}
+
+export interface PurchaseOrderInput {
+  vendorId: number;
+  productId: number;
+  quantity: number;
+  unitPrice: number;
+  note?: string | null;
+}
+
+export type VendorPaymentMethod = 'BankTransfer' | 'Cheque' | 'Cash';
+
+export interface VendorPaymentView {
+  id: number;
+  paymentNumber: string;
+  purchaseOrderId: number;
+  purchaseOrderNumber: string;
+  vendorId: number;
+  vendorName: string;
+  amount: number;
+  paidAt: string;
+  method: VendorPaymentMethod;
+  reference: string | null;
+  note: string | null;
+}
+
+export interface VendorPaymentInput {
+  purchaseOrderId: number;
+  amount: number;
+  method: VendorPaymentMethod;
+  reference?: string | null;
+  note?: string | null;
+}
+
+export interface EquipmentStockView {
+  id: number;
+  name: string;
+  description: string;
+  active: boolean;
+  quantityInStock: number;
+  replacementPrice: number;
+  pendingAllocations: number;
+  allocatedCount: number;
+}
+
+export interface EquipmentIncidentView {
+  id: number;
+  connectionId: number;
+  accountId: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  productId: number;
+  productName: string;
+  incidentDate: string;
+  description: string;
+  replacementFee: number;
+  recordedByUsername: string;
+  settled: boolean;
+}
+
+export interface EquipmentIncidentInput {
+  connectionId?: number | null;
+  accountId?: string | null;
+  productId: number;
+  description: string;
+  replacementFee?: number;
+}
+
+export interface ConnectOrderInput {
+  productId?: number | null;
 }
 
 export interface EmployeeInput {

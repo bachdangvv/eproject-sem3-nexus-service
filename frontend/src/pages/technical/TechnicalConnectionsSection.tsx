@@ -5,27 +5,43 @@ import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
 import { Code } from '@astryxdesign/core/Code';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { HStack } from '@astryxdesign/core/HStack';
+import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
+import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { useToast } from '@astryxdesign/core/Toast';
+import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   ApiErrorBanner,
   CopyableId,
   OrderDetailDrawer,
   ServiceTypeToken,
+  formatUsd,
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
-import { connectOrder, getOrderDetail, getOrders } from '../../services/operationsApi';
-import { ApiError, type OrderDetailView, type OrderView } from '../../types/nexus';
+import {
+  connectOrderWithEquipment,
+  getTechnicalEquipment,
+} from '../../services/inventoryApi';
+import { getOrderDetail, getOrders } from '../../services/operationsApi';
+import {
+  ApiError,
+  type EquipmentStockView,
+  type OrderDetailView,
+  type OrderView,
+} from '../../types/nexus';
 import {
   extractErrorMessage,
   type OrderRow,
@@ -45,6 +61,11 @@ export function TechnicalConnectionsSection({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [equipmentList, setEquipmentList] = useState<EquipmentStockView[]>([]);
+  const [activationTarget, setActivationTarget] = useState<OrderView | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string>('none');
+  const [activationError, setActivationError] = useState<string | null>(null);
 
   const [activatingCode, setActivatingCode] = useState<string | null>(null);
   const [lastActivatedOrder, setLastActivatedOrder] = useState<OrderView | null>(null);
@@ -67,6 +88,17 @@ export function TechnicalConnectionsSection({
     };
   }, []);
 
+  const loadEquipment = useCallback(async () => {
+    try {
+      const eq = await getTechnicalEquipment();
+      if (isMountedRef.current) {
+        setEquipmentList(eq);
+      }
+    } catch {
+      // Non-blocking for connections queue
+    }
+  }, []);
+
   const loadFeasibleOrders = useCallback(
     async (silent = false) => {
       if (!isMountedRef.current) return;
@@ -78,7 +110,10 @@ export function TechnicalConnectionsSection({
       }
       setLoadError(null);
       try {
-        const data = await getOrders({ status: 'Feasible' });
+        const [data] = await Promise.all([
+          getOrders({ status: 'Feasible' }),
+          loadEquipment(),
+        ]);
         if (!isMountedRef.current || seq !== requestSeqRef.current) return;
         setOrders(data);
         onCountChange(data.length);
@@ -92,7 +127,7 @@ export function TechnicalConnectionsSection({
         }
       }
     },
-    [onCountChange, onRefreshingChange],
+    [loadEquipment, onCountChange, onRefreshingChange],
   );
 
   useEffect(() => {
@@ -161,13 +196,46 @@ export function TechnicalConnectionsSection({
     }
   };
 
-  const handleActivateConnection = async (order: OrderView) => {
-    if (connectingRef.current || activatingCode !== null) return;
+  const handleOpenActivation = (order: OrderView) => {
+    setActivationTarget(order);
+    setActivationError(null);
+
+    // Auto-suggest equipment matching service type
+    const matching = equipmentList.find((eq) => {
+      if (!eq.active) return false;
+      const lowerName = eq.name.toLowerCase();
+      if (order.request.type === 'B') {
+        return lowerName.includes('router') || lowerName.includes('optical') || lowerName.includes('gpon');
+      }
+      if (order.request.type === 'D') {
+        return lowerName.includes('modem') || lowerName.includes('adsl');
+      }
+      if (order.request.type === 'T') {
+        return lowerName.includes('handset') || lowerName.includes('phone') || lowerName.includes('telephone');
+      }
+      return false;
+    });
+
+    setSelectedProductId(matching ? String(matching.id) : 'none');
+  };
+
+  const handleConfirmActivation = async () => {
+    if (!activationTarget || connectingRef.current || activatingCode !== null) return;
     connectingRef.current = true;
-    setActivatingCode(order.code);
+    setActivatingCode(activationTarget.code);
+    setActivationError(null);
     setActionError(null);
+
     try {
-      const activated = await connectOrder(order.code);
+      const prodId =
+        selectedProductId && selectedProductId !== 'none'
+          ? Number(selectedProductId)
+          : null;
+
+      const activated = await connectOrderWithEquipment(activationTarget.code, {
+        productId: prodId,
+      });
+
       if (!isMountedRef.current) return;
       setLastActivatedOrder(activated);
       toast({
@@ -175,17 +243,20 @@ export function TechnicalConnectionsSection({
           ? `Connected ${activated.code} - Account ID ${activated.accountId}`
           : `Connected order ${activated.code}.`,
       });
-      connectingRef.current = false;
-      setActivatingCode(null);
+
+      setActivationTarget(null);
       void loadFeasibleOrders(true);
+
       if (detailOpen && orderDetail?.order.code === activated.code) {
         void handleOpenDetail(activated.code);
       }
     } catch (err) {
       if (!isMountedRef.current) return;
-      setActionError(
-        extractErrorMessage(err, `Could not activate connection for order ${order.code}.`),
+      const msg = extractErrorMessage(
+        err,
+        `Could not activate connection for order ${activationTarget.code}.`,
       );
+      setActivationError(msg);
       if (err instanceof ApiError && err.status === 409) {
         void loadFeasibleOrders(true);
       }
@@ -196,6 +267,28 @@ export function TechnicalConnectionsSection({
       }
     }
   };
+
+  const selectedEquipment = useMemo(() => {
+    if (!selectedProductId || selectedProductId === 'none') return null;
+    return equipmentList.find((eq) => String(eq.id) === selectedProductId) ?? null;
+  }, [equipmentList, selectedProductId]);
+
+  const equipmentOptions = useMemo(() => {
+    return [
+      {
+        value: 'none',
+        label: 'None (No equipment allocated / Customer provided)',
+        description: 'Provision line without issuing hardware inventory.',
+      },
+      ...equipmentList
+        .filter((eq) => eq.active)
+        .map((eq) => ({
+          value: String(eq.id),
+          label: `${eq.name} · ${eq.quantityInStock} in stock`,
+          description: `Available: ${eq.quantityInStock} units | Fee: ${formatUsd(eq.replacementPrice)}`,
+        })),
+    ];
+  }, [equipmentList]);
 
   const columns: TableColumn<OrderRow>[] = [
     {
@@ -264,7 +357,7 @@ export function TechnicalConnectionsSection({
             label="Activate"
             isLoading={activatingCode === row.code}
             isDisabled={activatingCode !== null}
-            onClick={() => void handleActivateConnection(row)}
+            onClick={() => handleOpenActivation(row)}
           />
         </HStack>
       ),
@@ -278,7 +371,7 @@ export function TechnicalConnectionsSection({
           <HStack gap={3} vAlign="center" wrap="wrap">
             <Badge variant="neutral" label={`${filteredOrders.length} total`} />
             <Text type="supporting">
-              Activate Feasible orders to assign a permanent 16-character Account ID and enable
+              Activate Feasible orders to allocate equipment, assign a permanent 16-character Account ID, and enable
               Billing.
             </Text>
           </HStack>
@@ -394,6 +487,144 @@ export function TechnicalConnectionsSection({
           </>
         )}
       </VStack>
+
+      {/* Equipment Allocation & Connection Activation Dialog */}
+      <Dialog
+        isOpen={activationTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && activatingCode === null) {
+            setActivationTarget(null);
+            setActivationError(null);
+          }
+        }}
+        purpose="form"
+        width={480}
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={
+                activationTarget
+                  ? `Activate Connection · ${activationTarget.code}`
+                  : 'Activate Connection'
+              }
+              subtitle="Provision subscriber line, assign hardware equipment, and allocate 16-character Account ID."
+              onOpenChange={(open) => {
+                if (!open && activatingCode === null) {
+                  setActivationTarget(null);
+                  setActivationError(null);
+                }
+              }}
+            />
+          }
+          content={
+            <LayoutContent>
+              {activationTarget && (
+                <VStack gap={4}>
+                  <Card padding={4} variant="muted">
+                    <MetadataList columns={2} title={<Heading level={4}>Subscription Summary</Heading>}>
+                      <MetadataListItem label="Customer">
+                        {activationTarget.request.customerName}
+                      </MetadataListItem>
+                      <MetadataListItem label="City Territory">
+                        City {activationTarget.request.cityCode}
+                      </MetadataListItem>
+                      <MetadataListItem label="Service Plan">
+                        {activationTarget.request.planName}
+                      </MetadataListItem>
+                      <MetadataListItem label="Service Type">
+                        <ServiceTypeToken type={activationTarget.request.type} />
+                      </MetadataListItem>
+                      <MetadataListItem label="Installation Site">
+                        {activationTarget.request.address}
+                      </MetadataListItem>
+                      <MetadataListItem label="Account Preview">
+                        <Code>{`${activationTarget.request.type}${activationTarget.request.cityCode}############`}</Code>
+                      </MetadataListItem>
+                    </MetadataList>
+                  </Card>
+
+                  <ApiErrorBanner
+                    title="Activation failed"
+                    error={activationError}
+                    onDismiss={() => setActivationError(null)}
+                  />
+
+                  <VStack gap={3}>
+                    <Heading level={4}>Equipment Allocation</Heading>
+                    <Text type="supporting">
+                      Select subscriber terminal hardware to allocate from technical inventory upon line activation.
+                    </Text>
+
+                    <Selector
+                      label="Equipment to Allocate"
+                      placeholder="Select hardware or None..."
+                      options={equipmentOptions}
+                      value={selectedProductId}
+                      onChange={setSelectedProductId}
+                    />
+
+                    {selectedEquipment ? (
+                      <Card padding={3} variant="muted">
+                        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2}>
+                          <VStack gap={0.5}>
+                            <Text weight="semibold">{selectedEquipment.name}</Text>
+                            <Text type="supporting">{selectedEquipment.description}</Text>
+                          </VStack>
+                          <HStack gap={2} vAlign="center">
+                            <Token
+                              size="sm"
+                              color={
+                                selectedEquipment.quantityInStock >= 10
+                                  ? 'green'
+                                  : selectedEquipment.quantityInStock > 0
+                                    ? 'teal'
+                                    : 'red'
+                              }
+                              label={
+                                selectedEquipment.quantityInStock > 0
+                                  ? `${selectedEquipment.quantityInStock} in stock`
+                                  : 'Out of Stock'
+                              }
+                            />
+                            <Token
+                              size="sm"
+                              color="gray"
+                              label={`Fee: ${formatUsd(selectedEquipment.replacementPrice)}`}
+                            />
+                          </HStack>
+                        </HStack>
+                      </Card>
+                    ) : null}
+                  </VStack>
+                </VStack>
+              )}
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack hAlign="end" gap={2}>
+                <Button
+                  variant="ghost"
+                  label="Cancel"
+                  isDisabled={activatingCode !== null}
+                  onClick={() => {
+                    setActivationTarget(null);
+                    setActivationError(null);
+                  }}
+                />
+                <Button
+                  variant="primary"
+                  label="Confirm & Activate"
+                  isLoading={activatingCode !== null}
+                  isDisabled={activatingCode !== null}
+                  onClick={() => void handleConfirmActivation()}
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
 
       <OrderDetailDrawer
         detail={orderDetail}

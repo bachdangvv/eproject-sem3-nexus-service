@@ -5,7 +5,7 @@ import {
   type ServiceTypeCode,
 } from '../../types/nexus';
 
-export type TechnicalSection = 'assessments' | 'connections' | 'orders';
+export type TechnicalSection = 'assessments' | 'connections' | 'equipment' | 'orders';
 
 export type OrderRow = OrderView & Record<string, unknown>;
 
@@ -30,6 +30,13 @@ export const TECHNICAL_SECTION_META: Record<TechnicalSection, TechnicalSectionMe
     subtitle:
       'Activate Feasible orders to provision subscriber lines and generate 16-character Account IDs.',
     countLabel: 'ready',
+  },
+  equipment: {
+    title: 'Equipment & Maintenance',
+    tokenLabel: 'Equipment',
+    subtitle:
+      'Monitor hardware stock in hand, replacement fees, and record customer-damaged equipment incidents.',
+    countLabel: 'incidents',
   },
   orders: {
     title: 'Technical Orders Registry',

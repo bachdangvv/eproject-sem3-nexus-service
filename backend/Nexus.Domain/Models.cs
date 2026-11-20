@@ -60,6 +60,8 @@ public sealed class Product
     public required string Name { get; set; }
     public required string Description { get; set; }
     public bool Active { get; set; } = true;
+    public int QuantityInStock { get; set; } = 0;
+    public decimal ReplacementPrice { get; set; } = 0m;
 }
 
 public sealed class ServiceRequest
@@ -130,16 +132,23 @@ public sealed class ServiceOrder
         });
     }
 
-    public void Activate(int actorId)
+    public void Activate(int actorId, int? productId = null)
     {
         if (Status != OrderStatus.Feasible)
             throw new DomainRuleException(DomainRuleFailure.InvalidState, "Only Feasible orders can be connected.");
 
-        Connection = new Connection { Type = Request.Type, CityCode = Request.CityCode };
+        Connection = new Connection
+        {
+            Type = Request.Type,
+            CityCode = Request.CityCode,
+            AssignedProductId = productId
+        };
         Status = OrderStatus.Connected;
         History.Add(new OrderEvent
         {
-            Status = Status, ActorId = actorId, Note = "Technical activated the connection."
+            Status = Status, ActorId = actorId, Note = productId.HasValue
+                ? $"Technical activated the connection with equipment #{productId.Value}."
+                : "Technical activated the connection."
         });
     }
 
@@ -177,7 +186,101 @@ public sealed class Connection
     public required string CityCode { get; set; }
     public string AccountId => $"{Type}{CityCode}{Id:D12}";
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
+    public int? AssignedProductId { get; set; }
+    public Product? AssignedProduct { get; set; }
     public List<Invoice> Invoices { get; set; } = [];
+    public List<EquipmentIncident> Incidents { get; set; } = [];
+}
+
+public sealed class RetailShop
+{
+    public int Id { get; set; }
+    public required string Code { get; set; }
+    public required string Name { get; set; }
+    public required string CityCode { get; set; }
+    public City City { get; set; } = null!;
+    public required string Address { get; set; }
+    public required string Phone { get; set; }
+    public bool Active { get; set; } = true;
+}
+
+public sealed class Vendor
+{
+    public int Id { get; set; }
+    public required string Code { get; set; }
+    public required string Name { get; set; }
+    public required string ContactPerson { get; set; }
+    public required string Phone { get; set; }
+    public required string Email { get; set; }
+    public required string Address { get; set; }
+    public bool Active { get; set; } = true;
+}
+
+public sealed class PurchaseOrder
+{
+    public int Id { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public int VendorId { get; set; }
+    public Vendor Vendor { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string Status { get; set; } = "Ordered"; // Ordered, Received, Cancelled
+    public DateTime OrderedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ReceivedAt { get; set; }
+    public string? Note { get; set; }
+    public List<VendorPayment> Payments { get; set; } = [];
+
+    public void Receive()
+    {
+        if (Status == "Received") return;
+        if (Status == "Cancelled")
+            throw new DomainRuleException(DomainRuleFailure.InvalidState, "Cancelled orders cannot be received.");
+
+        Status = "Received";
+        ReceivedAt = DateTime.UtcNow;
+        Product.QuantityInStock += Quantity;
+    }
+
+    public void Cancel()
+    {
+        if (Status == "Received")
+            throw new DomainRuleException(DomainRuleFailure.InvalidState, "Received orders cannot be cancelled.");
+
+        Status = "Cancelled";
+    }
+}
+
+public sealed class VendorPayment
+{
+    public int Id { get; set; }
+    public string PaymentNumber { get; set; } = "";
+    public int PurchaseOrderId { get; set; }
+    public PurchaseOrder PurchaseOrder { get; set; } = null!;
+    public int VendorId { get; set; }
+    public Vendor Vendor { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public DateTime PaidAt { get; set; } = DateTime.UtcNow;
+    public string Method { get; set; } = "BankTransfer"; // BankTransfer, Cheque, Cash
+    public string? Reference { get; set; }
+    public string? Note { get; set; }
+}
+
+public sealed class EquipmentIncident
+{
+    public int Id { get; set; }
+    public long ConnectionId { get; set; }
+    public Connection Connection { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public DateTime IncidentDate { get; set; } = DateTime.UtcNow;
+    public required string Description { get; set; }
+    public decimal ReplacementFee { get; set; }
+    public int RecordedById { get; set; }
+    public Employee RecordedBy { get; set; } = null!;
+    public bool Settled { get; set; } = false;
 }
 
 public static class FinancialConstants

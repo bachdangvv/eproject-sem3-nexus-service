@@ -30,6 +30,10 @@ export const RoutePath = {
   ADMIN_CITIES: '/admin/cities',
   ADMIN_EMPLOYEES: '/admin/employees',
   ADMIN_CUSTOMERS: '/admin/customers',
+  ADMIN_RETAIL_SHOPS: '/admin/retail-shops',
+  ADMIN_VENDORS: '/admin/vendors',
+  ADMIN_PURCHASES: '/admin/purchases',
+  ADMIN_VENDOR_PAYMENTS: '/admin/vendor-payments',
 
   RETAIL: '/retail',
   RETAIL_CUSTOMERS: '/retail/customers',
@@ -40,6 +44,7 @@ export const RoutePath = {
   TECHNICAL: '/technical',
   TECHNICAL_ASSESSMENTS: '/technical/assessments',
   TECHNICAL_CONNECTIONS: '/technical/connections',
+  TECHNICAL_EQUIPMENT: '/technical/equipment',
   TECHNICAL_ORDERS: '/technical/orders',
 
   BILLING: '/billing',

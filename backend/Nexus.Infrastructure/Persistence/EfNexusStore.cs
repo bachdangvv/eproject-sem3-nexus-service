@@ -4,7 +4,7 @@ using Nexus.Domain;
 
 namespace Nexus.Infrastructure.Persistence;
 
-public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore, IBillingStore
+public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore, IBillingStore, IInventoryStore
 {
     public Task<Employee?> FindEmployeeAsync(string username) =>
         db.Employees.AsNoTracking().SingleOrDefaultAsync(employee => employee.Username == username);
@@ -162,6 +162,105 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
 
         return orders;
     }
+
+    public async Task<IReadOnlyList<RetailShop>> ListRetailShopsAsync(string? cityCode, bool includeInactive)
+    {
+        var query = db.RetailShops.Include(s => s.City).AsNoTracking();
+        if (!includeInactive)
+            query = query.Where(s => s.Active);
+        if (!string.IsNullOrWhiteSpace(cityCode))
+            query = query.Where(s => s.CityCode == cityCode);
+        return await query.OrderBy(s => s.Code).ToListAsync();
+    }
+
+    public Task<RetailShop?> FindRetailShopAsync(int id) =>
+        db.RetailShops.Include(s => s.City).FirstOrDefaultAsync(s => s.Id == id);
+
+    public Task<bool> RetailShopCodeExistsAsync(string code, int? excludeId = null) =>
+        db.RetailShops.AnyAsync(s => s.Code == code && (excludeId == null || s.Id != excludeId.Value));
+
+    public void Add(RetailShop shop) => db.RetailShops.Add(shop);
+
+    public async Task<IReadOnlyList<Vendor>> ListVendorsAsync(bool includeInactive) =>
+        await db.Vendors.AsNoTracking().Where(v => includeInactive || v.Active).OrderBy(v => v.Code).ToListAsync();
+
+    public Task<Vendor?> FindVendorAsync(int id) => db.Vendors.FindAsync(id).AsTask();
+
+    public Task<bool> VendorCodeExistsAsync(string code, int? excludeId = null) =>
+        db.Vendors.AnyAsync(v => v.Code == code && (excludeId == null || v.Id != excludeId.Value));
+
+    public void Add(Vendor vendor) => db.Vendors.Add(vendor);
+
+    public async Task<IReadOnlyList<PurchaseOrder>> ListPurchaseOrdersAsync(string? status)
+    {
+        var query = db.PurchaseOrders.Include(po => po.Vendor).Include(po => po.Product)
+            .Include(po => po.Payments).AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(status) && !status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(po => po.Status == status);
+        return await query.OrderByDescending(po => po.Id).ToListAsync();
+    }
+
+    public Task<PurchaseOrder?> FindPurchaseOrderAsync(int id) =>
+        db.PurchaseOrders.Include(po => po.Vendor).Include(po => po.Product)
+            .Include(po => po.Payments).FirstOrDefaultAsync(po => po.Id == id);
+
+    public async Task<int> NextPurchaseOrderSerialAsync() =>
+        (await db.PurchaseOrders.MaxAsync(po => (int?)po.Id) ?? 0) + 1;
+
+    public void Add(PurchaseOrder po) => db.PurchaseOrders.Add(po);
+
+    public async Task<IReadOnlyList<VendorPayment>> ListVendorPaymentsAsync(int? purchaseOrderId)
+    {
+        var query = db.VendorPayments.Include(vp => vp.PurchaseOrder).Include(vp => vp.Vendor).AsNoTracking();
+        if (purchaseOrderId.HasValue)
+            query = query.Where(vp => vp.PurchaseOrderId == purchaseOrderId.Value);
+        return await query.OrderByDescending(vp => vp.Id).ToListAsync();
+    }
+
+    public async Task<int> NextVendorPaymentSerialAsync() =>
+        (await db.VendorPayments.MaxAsync(vp => (int?)vp.Id) ?? 0) + 1;
+
+    public void Add(VendorPayment payment) => db.VendorPayments.Add(payment);
+
+    public async Task<IReadOnlyList<Product>> ListEquipmentProductsAsync() =>
+        await db.Products.AsNoTracking().OrderBy(p => p.Name).ToListAsync();
+
+    public Task<int> CountPendingFeasibleOrdersNeedingConnectionAsync() =>
+        db.Orders.CountAsync(o => o.Status == OrderStatus.Feasible && o.Connection == null);
+
+    public async Task<Dictionary<int, int>> GetProductAllocatedCountsAsync() =>
+        await db.Connections.Where(c => c.AssignedProductId != null)
+            .GroupBy(c => c.AssignedProductId!.Value)
+            .Select(g => new { ProductId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ProductId, x => x.Count);
+
+    public async Task<IReadOnlyList<EquipmentIncident>> ListIncidentsAsync(bool? settled)
+    {
+        var query = db.EquipmentIncidents.Include(i => i.Product).Include(i => i.Connection)
+            .Include(i => i.RecordedBy).AsNoTracking();
+        if (settled.HasValue)
+            query = query.Where(i => i.Settled == settled.Value);
+        return await query.OrderByDescending(i => i.Id).ToListAsync();
+    }
+
+    public Task<EquipmentIncident?> FindIncidentAsync(int id) =>
+        db.EquipmentIncidents.Include(i => i.Product).Include(i => i.Connection)
+            .Include(i => i.RecordedBy).FirstOrDefaultAsync(i => i.Id == id);
+
+    public Task<Connection?> FindConnectionAsync(long connectionId) =>
+        db.Connections.Include(c => c.AssignedProduct).FirstOrDefaultAsync(c => c.Id == connectionId);
+
+    public Task<Connection?> FindConnectionByAccountIdAsync(string accountId)
+    {
+        var val = accountId.Trim().ToUpperInvariant();
+        if (val.Length == 16 && long.TryParse(val.AsSpan(4), out var id))
+        {
+            return db.Connections.Include(c => c.AssignedProduct).FirstOrDefaultAsync(c => c.Id == id);
+        }
+        return Task.FromResult<Connection?>(null);
+    }
+
+    public void Add(EquipmentIncident incident) => db.EquipmentIncidents.Add(incident);
 
     public async Task SaveChangesAsync()
     {

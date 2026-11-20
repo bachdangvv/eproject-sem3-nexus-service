@@ -18,6 +18,11 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<PaymentTransaction> Payments => Set<PaymentTransaction>();
     public DbSet<ServiceFeedback> Feedback => Set<ServiceFeedback>();
+    public DbSet<RetailShop> RetailShops => Set<RetailShop>();
+    public DbSet<Vendor> Vendors => Set<Vendor>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<VendorPayment> VendorPayments => Set<VendorPayment>();
+    public DbSet<EquipmentIncident> EquipmentIncidents => Set<EquipmentIncident>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -96,6 +101,46 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
             .OnDelete(DeleteBehavior.Restrict);
         model.Entity<ServiceFeedback>().ToTable(table =>
             table.HasCheckConstraint("CK_Feedback_Rating", "Rating >= 1 AND Rating <= 5"));
+
+        model.Entity<Connection>()
+            .HasOne(c => c.AssignedProduct).WithMany().HasForeignKey(c => c.AssignedProductId).OnDelete(DeleteBehavior.Restrict);
+
+        model.Entity<RetailShop>(shop =>
+        {
+            shop.HasKey(s => s.Id);
+            shop.HasIndex(s => s.Code).IsUnique();
+            shop.HasOne(s => s.City).WithMany().HasForeignKey(s => s.CityCode).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<Vendor>(vendor =>
+        {
+            vendor.HasKey(v => v.Id);
+            vendor.HasIndex(v => v.Code).IsUnique();
+        });
+
+        model.Entity<PurchaseOrder>(po =>
+        {
+            po.HasKey(p => p.Id);
+            po.HasIndex(p => p.OrderNumber).IsUnique();
+            po.HasOne(p => p.Vendor).WithMany().HasForeignKey(p => p.VendorId).OnDelete(DeleteBehavior.Restrict);
+            po.HasOne(p => p.Product).WithMany().HasForeignKey(p => p.ProductId).OnDelete(DeleteBehavior.Restrict);
+            po.HasMany(p => p.Payments).WithOne(vp => vp.PurchaseOrder).HasForeignKey(vp => vp.PurchaseOrderId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<VendorPayment>(vp =>
+        {
+            vp.HasKey(v => v.Id);
+            vp.HasIndex(v => v.PaymentNumber).IsUnique();
+            vp.HasOne(v => v.Vendor).WithMany().HasForeignKey(v => v.VendorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<EquipmentIncident>(incident =>
+        {
+            incident.HasKey(i => i.Id);
+            incident.HasOne(i => i.Connection).WithMany(c => c.Incidents).HasForeignKey(i => i.ConnectionId).OnDelete(DeleteBehavior.Restrict);
+            incident.HasOne(i => i.Product).WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Restrict);
+            incident.HasOne(i => i.RecordedBy).WithMany().HasForeignKey(i => i.RecordedById).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     public static void SeedDemo(DbContext context, bool _)
@@ -126,7 +171,88 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
             new ServicePlan { Name = "BB Basic", Type = "B", Price = 225, Description = "64 Kbps · monthly" },
             new ServicePlan { Name = "Dial-up 10h", Type = "D", Price = 50, Description = "10 hours · one month" },
             new ServicePlan { Name = "Landline Monthly", Type = "T", Price = 35, Description = "Monthly local rental" });
-        db.Products.Add(new Product { Name = "Demo broadband router", Description = "Equipment catalog sample" });
+
+        var router = new Product { Name = "Demo broadband router", Description = "Equipment catalog sample", QuantityInStock = 25, ReplacementPrice = 45.00m };
+        var opticalRouter = new Product { Name = "Broadband Optical Router", Description = "Gigabit dual-band Wi-Fi 6 fiber ONT terminal", QuantityInStock = 40, ReplacementPrice = 75.00m };
+        var adslModem = new Product { Name = "ADSL2+ High-Speed Modem", Description = "Standard copper broadband DSL modem router", QuantityInStock = 18, ReplacementPrice = 30.00m };
+        var landlinePhone = new Product { Name = "Nexus Landline Telephone Handset", Description = "Caller ID digital desktop corded handset", QuantityInStock = 50, ReplacementPrice = 20.00m };
+        db.Products.AddRange(router, opticalRouter, adslModem, landlinePhone);
+
+        var shop1 = new RetailShop { Code = "RS-101-01", Name = "Nexus Central Flagship Outlet", CityCode = "101", Address = "108 Tran Hung Dao, District 1", Phone = "02839001001", Active = true };
+        var shop2 = new RetailShop { Code = "RS-101-02", Name = "Nexus Westside Service Center", CityCode = "101", Address = "45 Nguyen Trai, District 5", Phone = "02839001002", Active = true };
+        var shop3 = new RetailShop { Code = "RS-101-03", Name = "Nexus Tech Zone Outlet", CityCode = "101", Address = "220 Vo Van Ngan, Thu Duc", Phone = "02839001003", Active = true };
+        db.RetailShops.AddRange(shop1, shop2, shop3);
+
+        var vendor1 = new Vendor { Code = "VND-CISCO", Name = "Cisco Systems Network Vietnam", ContactPerson = "Le Hoang Nam", Phone = "02838221000", Email = "orders@cisco.com.vn", Address = "Level 14, Sunwah Tower, 115 Nguyen Hue, Dist 1", Active = true };
+        var vendor2 = new Vendor { Code = "VND-HUAWEI", Name = "Huawei Technologies Optical Co.", ContactPerson = "Nguyen Thu Trang", Phone = "02437725888", Email = "telecom@huawei.vn", Address = "Keangnam Landmark 72, Pham Hung, Hanoi", Active = true };
+        var vendor3 = new Vendor { Code = "VND-VNPT", Name = "VNPT Technology Devices JSC", ContactPerson = "Pham Quoc Bao", Phone = "02437669999", Email = "contact@vnpt-technology.vn", Address = "124 Hoang Quoc Viet, Cau Giay, Hanoi", Active = true };
+        db.Vendors.AddRange(vendor1, vendor2, vendor3);
+
+        var po1 = new PurchaseOrder
+        {
+            OrderNumber = "PO-000001",
+            Vendor = vendor1,
+            Product = opticalRouter,
+            Quantity = 50,
+            UnitPrice = 55.00m,
+            TotalAmount = 2750.00m,
+            Status = "Received",
+            OrderedAt = DateTime.UtcNow.AddDays(-10),
+            ReceivedAt = DateTime.UtcNow.AddDays(-5),
+            Note = "Q1 core fiber ONT terminal inventory replenishment"
+        };
+        var po2 = new PurchaseOrder
+        {
+            OrderNumber = "PO-000002",
+            Vendor = vendor2,
+            Product = adslModem,
+            Quantity = 20,
+            UnitPrice = 22.00m,
+            TotalAmount = 440.00m,
+            Status = "Received",
+            OrderedAt = DateTime.UtcNow.AddDays(-7),
+            ReceivedAt = DateTime.UtcNow.AddDays(-2),
+            Note = "Backup copper modem inventory"
+        };
+        var po3 = new PurchaseOrder
+        {
+            OrderNumber = "PO-000003",
+            Vendor = vendor3,
+            Product = landlinePhone,
+            Quantity = 60,
+            UnitPrice = 15.00m,
+            TotalAmount = 900.00m,
+            Status = "Ordered",
+            OrderedAt = DateTime.UtcNow.AddDays(-1),
+            ReceivedAt = null,
+            Note = "Standard corded telephone sets delivery"
+        };
+        db.PurchaseOrders.AddRange(po1, po2, po3);
+
+        var vp1 = new VendorPayment
+        {
+            PaymentNumber = "VP-000001",
+            PurchaseOrder = po1,
+            Vendor = vendor1,
+            Amount = 2750.00m,
+            PaidAt = DateTime.UtcNow.AddDays(-4),
+            Method = "BankTransfer",
+            Reference = "VCB-99823101",
+            Note = "Settled in full via Vietcombank corporate transfer"
+        };
+        var vp2 = new VendorPayment
+        {
+            PaymentNumber = "VP-000002",
+            PurchaseOrder = po2,
+            Vendor = vendor2,
+            Amount = 220.00m,
+            PaidAt = DateTime.UtcNow.AddDays(-1),
+            Method = "BankTransfer",
+            Reference = "BIDV-7712390",
+            Note = "50% advance payment for modem batch"
+        };
+        db.VendorPayments.AddRange(vp1, vp2);
+
         db.SaveChanges();
     }
 }

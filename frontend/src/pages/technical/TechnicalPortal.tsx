@@ -11,12 +11,14 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
 import { TechnicalAssessmentsSection } from './TechnicalAssessmentsSection';
 import { TechnicalConnectionsSection } from './TechnicalConnectionsSection';
+import { TechnicalEquipmentSection } from './TechnicalEquipmentSection';
 import { TechnicalOrdersSection } from './TechnicalOrdersSection';
 import { TECHNICAL_SECTION_META, type TechnicalSection } from './technicalTypes';
 
 const SECTION_ROUTE_MAP: Record<TechnicalSection, RoutePathValue> = {
   assessments: RoutePath.TECHNICAL_ASSESSMENTS,
   connections: RoutePath.TECHNICAL_CONNECTIONS,
+  equipment: RoutePath.TECHNICAL_EQUIPMENT,
   orders: RoutePath.TECHNICAL_ORDERS,
 };
 
@@ -82,6 +84,8 @@ export function TechnicalPortal({ section }: { section: TechnicalSection }): JSX
         return <TechnicalAssessmentsSection key="assessments" {...sharedProps} />;
       case 'connections':
         return <TechnicalConnectionsSection key="connections" {...sharedProps} />;
+      case 'equipment':
+        return <TechnicalEquipmentSection key="equipment" {...sharedProps} />;
       case 'orders':
         return <TechnicalOrdersSection key="orders" {...sharedProps} />;
     }
@@ -113,6 +117,7 @@ export function TechnicalPortal({ section }: { section: TechnicalSection }): JSX
             >
               <SegmentedControlItem value="assessments" label="Assessments" />
               <SegmentedControlItem value="connections" label="Connections" />
+              <SegmentedControlItem value="equipment" label="Equipment" />
               <SegmentedControlItem value="orders" label="All Orders" />
             </SegmentedControl>
             <Badge

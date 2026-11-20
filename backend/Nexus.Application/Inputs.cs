@@ -40,7 +40,50 @@ public sealed record PlanInput(
 public sealed record ProductInput(
     [property: Required, StringLength(100)] string Name,
     [property: StringLength(240)] string? Description,
-    bool Active);
+    bool Active,
+    [property: Range(0, 1000000)] int QuantityInStock = 0,
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal ReplacementPrice = 0m);
+
+public sealed record ConnectInput(
+    int? ProductId = null);
+
+public sealed record RetailShopInput(
+    [property: Required, RegularExpression("^[a-zA-Z0-9._-]{2,30}$")] string Code,
+    [property: Required, StringLength(120)] string Name,
+    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode,
+    [property: Required, StringLength(240)] string Address,
+    [property: Required, RegularExpression(@"^\+?[0-9]{7,15}$")] string Phone,
+    bool Active = true);
+
+public sealed record VendorInput(
+    [property: Required, RegularExpression("^[a-zA-Z0-9._-]{2,30}$")] string Code,
+    [property: Required, StringLength(120)] string Name,
+    [property: Required, StringLength(120)] string ContactPerson,
+    [property: Required, RegularExpression(@"^\+?[0-9]{7,15}$")] string Phone,
+    [property: Required, EmailAddress, StringLength(160)] string Email,
+    [property: Required, StringLength(240)] string Address,
+    bool Active = true);
+
+public sealed record PurchaseOrderInput(
+    [property: Range(1, int.MaxValue)] int VendorId,
+    [property: Range(1, int.MaxValue)] int ProductId,
+    [property: Range(1, 100000)] int Quantity,
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal UnitPrice,
+    [property: StringLength(500)] string? Note = null);
+
+public sealed record VendorPaymentInput(
+    [property: Range(1, int.MaxValue)] int PurchaseOrderId,
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal Amount,
+    [property: Required, RegularExpression("^(BankTransfer|Cheque|Cash)$")] string Method,
+    [property: StringLength(100)] string? Reference = null,
+    [property: StringLength(500)] string? Note = null);
+
+public sealed record EquipmentIncidentInput(
+    long? ConnectionId = null,
+    [property: StringLength(30)] string? AccountId = null,
+    [property: Range(1, int.MaxValue)] int ProductId = 0,
+    [property: Required, StringLength(500)] string Description = "",
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal ReplacementFee = 0m);
 
 public sealed record RequestInput(
     [property: Range(1, int.MaxValue)] int CustomerId,
