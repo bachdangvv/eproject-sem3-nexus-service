@@ -1,7 +1,8 @@
 bin/
 obj/
 demo.db*
-data/
+backend/data/
+backend/Nexus.Api/data/
 *.user
 TestResults/
 
