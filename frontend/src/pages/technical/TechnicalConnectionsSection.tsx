@@ -1,3 +1,6 @@
+/**
+ * Technical feasible order activation queue and equipment allocation section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -60,7 +63,6 @@ export function TechnicalConnectionsSection({
   const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const [equipmentList, setEquipmentList] = useState<EquipmentStockView[]>([]);
   const [activationTarget, setActivationTarget] = useState<OrderView | null>(null);
@@ -224,7 +226,6 @@ export function TechnicalConnectionsSection({
     connectingRef.current = true;
     setActivatingCode(activationTarget.code);
     setActivationError(null);
-    setActionError(null);
 
     try {
       const prodId =
@@ -413,12 +414,6 @@ export function TechnicalConnectionsSection({
             }
           />
         ) : null}
-
-        <ApiErrorBanner
-          title="Connection activation failed"
-          error={actionError}
-          onDismiss={() => setActionError(null)}
-        />
 
         <ApiErrorBanner
           title="Connections queue error"

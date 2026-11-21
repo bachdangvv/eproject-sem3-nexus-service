@@ -1,19 +1,26 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Features;
 using Nexus.Api;
 using Nexus.Api.Endpoints;
 using Nexus.Application;
 using Nexus.Infrastructure;
 
+// Configure ASP.NET Core services: ProblemDetails, Antiforgery CSRF, Cookie Auth, and Rate Limiting.
 var demo = args.Contains("--demo");
 var builder = WebApplication.CreateBuilder(args.Where(argument => argument != "--demo").ToArray());
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddValidation();
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-CSRF-Token");
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 12 * 1024 * 1024;
+});
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "Nexus.Session";
@@ -31,11 +38,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     };
 });
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IDocumentStorage, LocalDocumentStorage>();
 builder.Services.AddScoped<StaffService>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<OperationsService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<InventoryService>();
+builder.Services.AddScoped<CustomerPortalService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -68,6 +77,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
+// Enforce X-CSRF-Token validation on all non-GET /api routes and expose session/endpoint groups.
 var api = app.MapGroup("/api");
 api.AddEndpointFilter(async (context, next) =>
 {
@@ -82,12 +92,21 @@ api.AddEndpointFilter(async (context, next) =>
 });
 api.MapGet("/session", (HttpContext context, IAntiforgery tokens) =>
 {
+    int? customerId = int.TryParse(
+        context.User.FindFirstValue("customerId"),
+        NumberStyles.None,
+        CultureInfo.InvariantCulture,
+        out var parsedCustomerId) && parsedCustomerId > 0
+        ? parsedCustomerId
+        : null;
     return new
     {
         csrfToken = tokens.GetAndStoreTokens(context).RequestToken,
         username = context.User.FindFirstValue(ClaimTypes.Name),
         displayName = context.User.FindFirstValue("displayName"),
-        role = context.User.FindFirstValue(ClaimTypes.Role)
+        role = context.User.FindFirstValue(ClaimTypes.Role),
+        customerId,
+        customerCode = context.User.FindFirstValue("customerCode")
     };
 });
 api.MapStaff();
@@ -96,4 +115,5 @@ api.MapOperations();
 api.MapBilling();
 api.MapInventory();
 api.MapPublic();
+api.MapCustomer();
 app.Run();

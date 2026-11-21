@@ -1,3 +1,6 @@
+/**
+ * Admin read-only Customer Directory and Document Archive workspace section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -10,25 +13,33 @@ import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
+import { useToast } from '@astryxdesign/core/Toast';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import { ApiErrorBanner, CopyableId, CustomerStatusPill } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
+import { RoutePath, useRouter } from '../../router/router';
 import { getCities } from '../../services/catalogApi';
-import { getCustomers } from '../../services/operationsApi';
-import type { CityView, CustomerView } from '../../types/nexus';
+import { getCustomers, updateCustomer } from '../../services/operationsApi';
+import type { CityView, CustomerStatus, CustomerView } from '../../types/nexus';
+import { DocumentsSection } from '../shared/DocumentsSection';
 import { extractErrorMessage, type AdminSectionProps, type CustomerRow } from './adminTypes';
 
 export function CustomersSection({
   refreshTrigger,
   onCountChange,
   onRefreshingChange,
-}: AdminSectionProps): JSX.Element {
+  initialView = 'directory',
+}: AdminSectionProps & { initialView?: 'directory' | 'documents' }): JSX.Element {
+  const toast = useToast();
+  const { navigate } = useRouter();
+  const viewMode = initialView;
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [customers, setCustomers] = useState<CustomerView[]>([]);
@@ -36,6 +47,7 @@ export function CustomersSection({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerView | null>(null);
+  const [togglingCustomerId, setTogglingCustomerId] = useState<number | null>(null);
 
   const requestSeqRef = useRef(0);
   const hasLoadedOnceRef = useRef(false);
@@ -141,6 +153,47 @@ export function CustomersSection({
     resetKey: debouncedQuery,
   });
 
+  const handleToggleCustomerStatus = async (customer: CustomerView) => {
+    if (togglingCustomerId !== null) return;
+    const nextStatus: CustomerStatus = customer.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    setTogglingCustomerId(customer.id);
+    setLoadError(null);
+    try {
+      const updated = await updateCustomer(customer.id, {
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        cityCode: customer.cityCode,
+        taxId: customer.taxId,
+        email: customer.email,
+        contactPerson: customer.contactPerson,
+        customerType: customer.customerType,
+        status: nextStatus,
+      });
+      if (!isMountedRef.current) return;
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setSelectedCustomer((prev) => (prev && prev.id === updated.id ? updated : prev));
+      toast({
+        body:
+          nextStatus === 'SUSPENDED'
+            ? `Suspended customer account "${updated.name}" (${updated.code}).`
+            : `Reactivated customer account "${updated.name}" (${updated.code}).`,
+      });
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setLoadError(
+        extractErrorMessage(
+          err,
+          `Could not update status for customer "${customer.name}".`,
+        ),
+      );
+    } finally {
+      if (isMountedRef.current) {
+        setTogglingCustomerId(null);
+      }
+    }
+  };
+
   const columns: TableColumn<CustomerRow>[] = [
     {
       key: 'code',
@@ -181,22 +234,57 @@ export function CustomersSection({
     },
     {
       key: 'actions',
-      header: 'Details',
-      width: pixel(100),
+      header: 'Actions',
+      width: pixel(190),
       align: 'end',
       renderCell: (row) => (
-        <Button
-          size="sm"
-          variant="secondary"
-          label="View"
-          onClick={() => setSelectedCustomer(row)}
-        />
+        <HStack gap={2} hAlign="end" wrap="nowrap">
+          <Button
+            size="sm"
+            variant="secondary"
+            label="View"
+            onClick={() => setSelectedCustomer(row)}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            label={row.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
+            isLoading={togglingCustomerId === row.id}
+            isDisabled={togglingCustomerId !== null}
+            onClick={() => void handleToggleCustomerStatus(row)}
+          />
+        </HStack>
       ),
     },
   ];
 
   return (
-    <Card padding={6}>
+    <VStack gap={4}>
+      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+        <SegmentedControl
+          label="Customer workspace view"
+          value={viewMode}
+          onChange={(val) => {
+            const next = val as 'directory' | 'documents';
+            navigate(
+              next === 'documents' ? RoutePath.ADMIN_DOCUMENTS : RoutePath.ADMIN_CUSTOMERS,
+            );
+          }}
+        >
+          <SegmentedControlItem value="directory" label="Customer Directory" />
+          <SegmentedControlItem value="documents" label="Document Archive" />
+        </SegmentedControl>
+      </HStack>
+
+      {viewMode === 'documents' ? (
+        <DocumentsSection
+          portalRole="Admin"
+          refreshTrigger={refreshTrigger}
+          onCountChange={onCountChange}
+          onRefreshingChange={onRefreshingChange}
+        />
+      ) : (
+        <Card padding={6}>
       <VStack gap={5}>
         <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
           <TextInput
@@ -364,7 +452,20 @@ export function CustomersSection({
           }
           footer={
             <LayoutFooter hasDivider>
-              <HStack hAlign="end">
+              <HStack hAlign="between" gap={2} wrap="wrap">
+                {selectedCustomer ? (
+                  <Button
+                    variant={selectedCustomer.status === 'ACTIVE' ? 'destructive' : 'primary'}
+                    label={
+                      selectedCustomer.status === 'ACTIVE'
+                        ? 'Suspend Customer'
+                        : 'Reactivate Customer'
+                    }
+                    isLoading={togglingCustomerId === selectedCustomer.id}
+                    isDisabled={togglingCustomerId !== null}
+                    onClick={() => void handleToggleCustomerStatus(selectedCustomer)}
+                  />
+                ) : null}
                 <Button
                   variant="secondary"
                   label="Close"
@@ -375,6 +476,8 @@ export function CustomersSection({
           }
         />
       </Drawer>
-    </Card>
+        </Card>
+      )}
+    </VStack>
   );
 }

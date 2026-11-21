@@ -1,3 +1,6 @@
+/**
+ * Technical site feasibility assessment queue and evaluation modal section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';

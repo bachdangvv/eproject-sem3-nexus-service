@@ -1,7 +1,11 @@
+/**
+ * Inventory, retail shop, vendor, purchase order, vendor payment, and technical equipment API client.
+ */
 import type {
   ConnectOrderInput,
   EquipmentIncidentInput,
   EquipmentIncidentView,
+  EquipmentInventorySummaryView,
   EquipmentStockView,
   OrderView,
   PurchaseOrderInput,
@@ -16,11 +20,6 @@ import type {
 import { apiRequest, normalizeOptionalString } from './apiClient';
 
 // ==================== Retail Shops ====================
-
-export function getRetailShops(cityCode?: string): Promise<RetailShopView[]> {
-  const query = cityCode ? `?cityCode=${encodeURIComponent(cityCode)}` : '';
-  return apiRequest<RetailShopView[]>(`/retail-shops${query}`);
-}
 
 export function getAdminRetailShops(cityCode?: string): Promise<RetailShopView[]> {
   const query = cityCode ? `?cityCode=${encodeURIComponent(cityCode)}` : '';
@@ -157,6 +156,10 @@ export function getTechnicalEquipment(): Promise<EquipmentStockView[]> {
   return apiRequest<EquipmentStockView[]>('/technical/equipment');
 }
 
+export function getTechnicalEquipmentSummary(): Promise<EquipmentInventorySummaryView> {
+  return apiRequest<EquipmentInventorySummaryView>('/technical/equipment/summary');
+}
+
 export function getEquipmentIncidents(settled?: boolean): Promise<EquipmentIncidentView[]> {
   const query = settled !== undefined ? `?settled=${settled}` : '';
   return apiRequest<EquipmentIncidentView[]>(`/technical/incidents${query}`);
@@ -176,7 +179,8 @@ export function recordEquipmentIncident(input: EquipmentIncidentInput): Promise<
 }
 
 export function connectOrderWithEquipment(code: string, input?: ConnectOrderInput): Promise<OrderView> {
-  return apiRequest<OrderView>(`/orders/${code}/connection`, {
+  const normalizedCode = encodeURIComponent(code.trim().toUpperCase());
+  return apiRequest<OrderView>(`/orders/${normalizedCode}/connection`, {
     method: 'POST',
     body: input?.productId ? JSON.stringify({ productId: input.productId }) : undefined,
   });

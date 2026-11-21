@@ -181,4 +181,37 @@ export const vercelIconRegistry = {
     createElement('path', { d: 'M4 6v5c0 1.66 3.58 3 8 3s8-1.34 8-3V6' }),
     createElement('path', { d: 'M4 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5' }),
   ),
+
+  // Retail & Technical -> Connection Lifecycle: Telemetry heartbeat pulse inside circular lifecycle ring
+  'nexus:lifecycle': svgIcon(
+    createElement('path', { d: 'M21 12a9 9 0 1 1-2.64-6.36' }),
+    createElement('polyline', { points: '21 3 21 8 16 8' }),
+    createElement('polyline', { points: '6.5 12 9.5 12 11 9 13 15 14.5 12 17.5 12' }),
+  ),
+
+  // Admin & Retail -> Customer Documents: Archival folder binder with verification seal
+  'nexus:documents': svgIcon(
+    createElement('path', {
+      d: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z',
+    }),
+    createElement('line', { x1: 8, y1: 11, x2: 16, y2: 11 }),
+    createElement('line', { x1: 8, y1: 15, x2: 13, y2: 15 }),
+  ),
+
+  // Admin & Retail -> Plan Changes: Dual opposing tariff switch arrows
+  'nexus:planChanges': svgIcon(
+    createElement('path', { d: 'M4 8h15l-3.5-3.5' }),
+    createElement('path', { d: 'm15.5 11.5 3.5-3.5' }),
+    createElement('path', { d: 'M20 16H5l3.5-3.5' }),
+    createElement('path', { d: 'M8.5 19.5 5 16' }),
+  ),
+
+  // Admin & Retail -> Queries & FAQ: Support speech dialog bubble with question mark
+  'nexus:queries': svgIcon(
+    createElement('path', {
+      d: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z',
+    }),
+    createElement('path', { d: 'M9.75 9a2.25 2.25 0 0 1 4.5 0c0 1.5-2.25 2-2.25 3.25' }),
+    createElement('circle', { cx: 12, cy: 15.5, r: 0.6 }),
+  ),
 };

@@ -5,6 +5,7 @@ namespace Nexus.Infrastructure.Persistence;
 
 public abstract partial class NexusDb
 {
+    /// <summary>Configures column lengths, decimal precisions, defaults, and optimistic concurrency tokens.</summary>
     private static void ConfigureProperties(ModelBuilder model)
     {
         model.Entity<Employee>(entity =>
@@ -13,6 +14,7 @@ public abstract partial class NexusDb
             entity.Property(user => user.DisplayName).HasMaxLength(100);
             entity.Property(user => user.Role).HasMaxLength(20);
             entity.Property(user => user.PasswordHash).HasMaxLength(512);
+            entity.Property(user => user.Active).HasDefaultValue(true);
         });
 
         model.Entity<City>(entity =>
@@ -25,6 +27,7 @@ public abstract partial class NexusDb
         model.Entity<Customer>(entity =>
         {
             entity.Ignore(customer => customer.Code);
+            entity.Ignore(customer => customer.IsSuspended);
             entity.Property(customer => customer.Name).HasMaxLength(120);
             entity.Property(customer => customer.SearchName).HasMaxLength(120);
             entity.Property(customer => customer.Phone).HasMaxLength(16);
@@ -42,12 +45,14 @@ public abstract partial class NexusDb
             entity.Property(plan => plan.Name).HasMaxLength(100);
             entity.Property(plan => plan.Type).HasMaxLength(1);
             entity.Property(plan => plan.Description).HasMaxLength(240);
+            entity.Property(plan => plan.ValidityMonths).HasDefaultValue(1);
         });
 
         model.Entity<Product>(entity =>
         {
             entity.Property(product => product.Name).HasMaxLength(100);
             entity.Property(product => product.Description).HasMaxLength(240);
+            entity.Property(product => product.QuantityInStock).IsConcurrencyToken();
             entity.Property(product => product.ReplacementPrice).HasPrecision(12, 2);
         });
 
@@ -116,12 +121,42 @@ public abstract partial class NexusDb
             entity.Ignore(connection => connection.AccountId);
             entity.Property(connection => connection.Type).HasMaxLength(1);
             entity.Property(connection => connection.CityCode).HasMaxLength(3);
+            entity.Property(connection => connection.Status).HasMaxLength(30).HasDefaultValue("Active").IsConcurrencyToken();
+            entity.Property(connection => connection.SuspendReason).HasMaxLength(500);
+            entity.Property(connection => connection.RefundStatus).HasMaxLength(30);
+            entity.Property(connection => connection.RefundAmount).HasPrecision(12, 2);
+            entity.Property(connection => connection.RefundNote).HasMaxLength(500);
+        });
+
+        model.Entity<CustomerDocument>(entity =>
+        {
+            entity.Property(doc => doc.DocumentType).HasMaxLength(40);
+            entity.Property(doc => doc.Title).HasMaxLength(200);
+            entity.Property(doc => doc.FilePathOrUrl).HasMaxLength(500);
+            entity.Property(doc => doc.OriginalFileName).HasMaxLength(255);
+            entity.Property(doc => doc.ContentType).HasMaxLength(120);
+            entity.Property(doc => doc.CityCode).HasMaxLength(3);
+        });
+
+        model.Entity<PlanChangeRequest>(entity =>
+        {
+            entity.Property(req => req.Status).HasMaxLength(20);
+            entity.Property(req => req.Note).HasMaxLength(500);
+        });
+
+        model.Entity<CustomerQuery>(entity =>
+        {
+            entity.Property(query => query.Subject).HasMaxLength(200);
+            entity.Property(query => query.Category).HasMaxLength(40);
+            entity.Property(query => query.Question).HasMaxLength(1000);
+            entity.Property(query => query.Answer).HasMaxLength(2000);
+            entity.Property(query => query.Status).HasMaxLength(20);
         });
 
         model.Entity<Invoice>(entity =>
         {
             entity.Property(invoice => invoice.InvoiceNumber).HasMaxLength(60);
-            entity.Property(invoice => invoice.Status).HasMaxLength(20);
+            entity.Property(invoice => invoice.Status).HasMaxLength(20).IsConcurrencyToken();
         });
 
         model.Entity<PaymentTransaction>(entity =>

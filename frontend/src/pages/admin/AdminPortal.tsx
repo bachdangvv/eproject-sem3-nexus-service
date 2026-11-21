@@ -1,12 +1,18 @@
+/**
+ * Admin operations portal shell routing across service plans, products, cities/outlets,
+ * employees, customers/documents, vendors/procurement, and customer queries.
+ */
 import { useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Heading } from '@astryxdesign/core/Heading';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
+import { RoutePath, useRouter } from '../../router/router';
 import { ADMIN_SECTION_META, type AdminSection } from './adminTypes';
 import { CitiesSection } from './CitiesSection';
 import { CustomersSection } from './CustomersSection';
@@ -17,8 +23,11 @@ import { PurchasesSection } from './PurchasesSection';
 import { RetailShopsSection } from './RetailShopsSection';
 import { VendorPaymentsSection } from './VendorPaymentsSection';
 import { VendorsSection } from './VendorsSection';
+import { CustomerQueriesSection } from '../shared/CustomerQueriesSection';
+import { PlanChangesSection } from '../shared/PlanChangesSection';
 
 export function AdminPortal({ section }: { section: AdminSection }): JSX.Element {
+  const { navigate } = useRouter();
   const [prevSection, setPrevSection] = useState<AdminSection>(section);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [itemCount, setItemCount] = useState<number | null>(null);
@@ -74,7 +83,7 @@ export function AdminPortal({ section }: { section: AdminSection }): JSX.Element
       case 'employees':
         return <EmployeesSection key="employees" {...sharedProps} />;
       case 'customers':
-        return <CustomersSection key="customers" {...sharedProps} />;
+        return <CustomersSection key="customers" initialView="directory" {...sharedProps} />;
       case 'retail-shops':
         return <RetailShopsSection key="retail-shops" {...sharedProps} />;
       case 'vendors':
@@ -83,7 +92,71 @@ export function AdminPortal({ section }: { section: AdminSection }): JSX.Element
         return <PurchasesSection key="purchases" {...sharedProps} />;
       case 'vendor-payments':
         return <VendorPaymentsSection key="vendor-payments" {...sharedProps} />;
+      case 'documents':
+        return <CustomersSection key="customers-docs" initialView="documents" {...sharedProps} />;
+      case 'plan-changes':
+        return <PlanChangesSection key="plan-changes" roleMode="admin" {...sharedProps} />;
+      case 'queries':
+        return <CustomerQueriesSection key="queries" portalRole="Admin" {...sharedProps} />;
     }
+  };
+
+  const renderSubTabs = () => {
+    if (section === 'plans' || section === 'plan-changes') {
+      return (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+          <SegmentedControl
+            label="Service plans workspace view"
+            value={section}
+            onChange={(val) =>
+              navigate(val === 'plan-changes' ? RoutePath.ADMIN_PLAN_CHANGES : RoutePath.ADMIN_PLANS)
+            }
+          >
+            <SegmentedControlItem value="plans" label="Plans Catalog" />
+            <SegmentedControlItem value="plan-changes" label="Plan Change Requests" />
+          </SegmentedControl>
+        </HStack>
+      );
+    }
+
+    if (section === 'cities' || section === 'retail-shops') {
+      return (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+          <SegmentedControl
+            label="Cities and retail outlets workspace view"
+            value={section}
+            onChange={(val) =>
+              navigate(val === 'retail-shops' ? RoutePath.ADMIN_RETAIL_SHOPS : RoutePath.ADMIN_CITIES)
+            }
+          >
+            <SegmentedControlItem value="cities" label="Territory Cities" />
+            <SegmentedControlItem value="retail-shops" label="Retail Outlets" />
+          </SegmentedControl>
+        </HStack>
+      );
+    }
+
+    if (section === 'vendors' || section === 'purchases' || section === 'vendor-payments') {
+      return (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+          <SegmentedControl
+            label="Vendors and procurement workspace view"
+            value={section}
+            onChange={(val) => {
+              if (val === 'purchases') navigate(RoutePath.ADMIN_PURCHASES);
+              else if (val === 'vendor-payments') navigate(RoutePath.ADMIN_VENDOR_PAYMENTS);
+              else navigate(RoutePath.ADMIN_VENDORS);
+            }}
+          >
+            <SegmentedControlItem value="vendors" label="Vendors Directory" />
+            <SegmentedControlItem value="purchases" label="Equipment Purchases" />
+            <SegmentedControlItem value="vendor-payments" label="Vendor Payments" />
+          </SegmentedControl>
+        </HStack>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -116,6 +189,7 @@ export function AdminPortal({ section }: { section: AdminSection }): JSX.Element
         </HStack>
       </Card>
 
+      {renderSubTabs()}
       {renderSection()}
     </VStack>
   );

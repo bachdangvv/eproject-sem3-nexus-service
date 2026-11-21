@@ -1,3 +1,7 @@
+/**
+ * Retail storefront portal shell routing across customer onboarding, service requests,
+ * orders, connection lifecycle/plan changes, in-store billing, and queries/FAQ.
+ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -11,8 +15,11 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
 import { RetailBillingSection } from './RetailBillingSection';
 import { RetailCustomersSection } from './RetailCustomersSection';
+import { RetailLifecycleSection } from './RetailLifecycleSection';
 import { RetailOrdersSection } from './RetailOrdersSection';
 import { RetailRequestsSection } from './RetailRequestsSection';
+import { CustomerQueriesSection } from '../shared/CustomerQueriesSection';
+import { PlanChangesSection } from '../shared/PlanChangesSection';
 import { RETAIL_SECTION_META, type RetailSection } from './retailTypes';
 
 const SECTION_ROUTE_MAP: Record<RetailSection, RoutePathValue> = {
@@ -20,6 +27,10 @@ const SECTION_ROUTE_MAP: Record<RetailSection, RoutePathValue> = {
   requests: RoutePath.RETAIL_REQUESTS,
   orders: RoutePath.RETAIL_ORDERS,
   billing: RoutePath.RETAIL_BILLING,
+  lifecycle: RoutePath.RETAIL_LIFECYCLE,
+  documents: RoutePath.RETAIL_DOCUMENTS,
+  'plan-changes': RoutePath.RETAIL_PLAN_CHANGES,
+  queries: RoutePath.RETAIL_QUERIES,
 };
 
 export function RetailPortal({ section }: { section: RetailSection }): JSX.Element {
@@ -81,13 +92,21 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
 
     switch (section) {
       case 'customers':
-        return <RetailCustomersSection key="customers" {...sharedProps} />;
+        return <RetailCustomersSection key="customers" initialView="directory" {...sharedProps} />;
       case 'requests':
         return <RetailRequestsSection key="requests" {...sharedProps} />;
       case 'orders':
         return <RetailOrdersSection key="orders" {...sharedProps} />;
       case 'billing':
         return <RetailBillingSection key="billing" {...sharedProps} />;
+      case 'lifecycle':
+        return <RetailLifecycleSection key="lifecycle" {...sharedProps} />;
+      case 'documents':
+        return <RetailCustomersSection key="customers-docs" initialView="documents" {...sharedProps} />;
+      case 'plan-changes':
+        return <PlanChangesSection key="plan-changes" roleMode="retail" {...sharedProps} />;
+      case 'queries':
+        return <CustomerQueriesSection key="queries" portalRole="Retail" {...sharedProps} />;
     }
   };
 
@@ -107,7 +126,13 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
           <HStack gap={3} vAlign="center" wrap="wrap">
             <SegmentedControl
               label="Retail portal sections"
-              value={section}
+              value={
+                section === 'documents'
+                  ? 'customers'
+                  : section === 'plan-changes'
+                    ? 'lifecycle'
+                    : section
+              }
               onChange={(val) => {
                 const target = val as RetailSection;
                 if (target !== section) {
@@ -118,7 +143,9 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
               <SegmentedControlItem value="customers" label="Customers" />
               <SegmentedControlItem value="requests" label="Requests" />
               <SegmentedControlItem value="orders" label="Orders" />
+              <SegmentedControlItem value="lifecycle" label="Connections" />
               <SegmentedControlItem value="billing" label="Billing & Payments" />
+              <SegmentedControlItem value="queries" label="Queries & FAQ" />
             </SegmentedControl>
             <Badge
               variant="neutral"
@@ -135,6 +162,25 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
           </HStack>
         </HStack>
       </Card>
+
+      {(section === 'lifecycle' || section === 'plan-changes') && (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+          <SegmentedControl
+            label="Retail connection management view"
+            value={section}
+            onChange={(val) =>
+              navigate(
+                val === 'plan-changes'
+                  ? RoutePath.RETAIL_PLAN_CHANGES
+                  : RoutePath.RETAIL_LIFECYCLE,
+              )
+            }
+          >
+            <SegmentedControlItem value="lifecycle" label="Connection Lifecycle" />
+            <SegmentedControlItem value="plan-changes" label="Plan Change Requests" />
+          </SegmentedControl>
+        </HStack>
+      )}
 
       {renderSection()}
     </VStack>

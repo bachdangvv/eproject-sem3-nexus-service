@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Nexus.Application;
 
+// Validated HTTP request input contracts bound by Minimal API endpoints.
+/// <summary>Credentials payload for staff authentication.</summary>
 public sealed record LoginInput(
     [property: Required, StringLength(40)] string Username,
     [property: Required, StringLength(128)] string Password);
@@ -10,10 +12,21 @@ public sealed record EmployeeInput(
     [property: Required, RegularExpression("^[a-zA-Z0-9._-]{3,40}$")] string Username,
     [property: Required, StringLength(100)] string DisplayName,
     [property: Required, StringLength(20)] string Role,
-    [property: Required, StringLength(128, MinimumLength = 12)] string Password);
+    [property: Required, StringLength(128, MinimumLength = 12)] string Password,
+    [property: Range(1, int.MaxValue)] int? RetailShopId = null);
+
+public sealed record EmployeeUpdateInput(
+    [property: Required, StringLength(100)] string DisplayName,
+    [property: Required, StringLength(20)] string Role,
+    [property: StringLength(128, MinimumLength = 12)] string? Password = null,
+    [property: Range(1, int.MaxValue)] int? RetailShopId = null,
+    bool? Active = null);
 
 public sealed record CityInput(
     [property: Required, RegularExpression("^[0-9]{3}$")] string Code,
+    [property: Required, StringLength(100)] string Name);
+
+public sealed record CityUpdateInput(
     [property: Required, StringLength(100)] string Name);
 
 public sealed record CustomerInput(
@@ -33,9 +46,12 @@ public sealed record PlanInput(
     [property: StringLength(240)] string? Description,
     [property: Range(typeof(decimal), "0", "9999999999.99")] decimal Price,
     bool Active,
-    decimal LocalCallRate = 0m,
-    decimal StdCallRate = 0m,
-    decimal MobileMsgRate = 0m);
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal LocalCallRate = 0m,
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal StdCallRate = 0m,
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal MobileMsgRate = 0m,
+    [property: Range(1, 12)] int ValidityMonths = 1,
+    [property: Range(1, 100000)] int? HoursAllowance = null,
+    [property: Range(1, 10000000)] int? SpeedKbps = null);
 
 public sealed record ProductInput(
     [property: Required, StringLength(100)] string Name,
@@ -92,17 +108,20 @@ public sealed record RequestInput(
     [property: Range(1, 10000)] int? ConnectionCount = 1);
 
 public sealed record CreateInvoiceInput(
-    decimal? LocalMinutes = 0m,
-    decimal? StdMinutes = 0m,
-    decimal? MobileMinutes = 0m,
-    decimal? EquipmentFee = 0m,
+    [property: Range(typeof(decimal), "0", "99999999.99")] decimal? LocalMinutes = 0m,
+    [property: Range(typeof(decimal), "0", "99999999.99")] decimal? StdMinutes = 0m,
+    [property: Range(typeof(decimal), "0", "99999999.99")] decimal? MobileMinutes = 0m,
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal? EquipmentFee = 0m,
     bool? IncludeDeposit = null,
     DateTime? PeriodStart = null,
     DateTime? PeriodEnd = null);
 
 public sealed record RecordPaymentInput(
-    decimal? Amount = null,
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal? Amount = null,
     [property: StringLength(250)] string? Note = null);
+
+public sealed record RefundDepositInput(
+    [property: StringLength(500)] string? Note = null);
 
 public sealed record AssessmentInput(
     [property: Required] bool? DistanceOk,
@@ -113,3 +132,75 @@ public sealed record AssessmentInput(
 public sealed record FeedbackInput(
     [property: Range(1, 5)] int Rating,
     [property: Required, StringLength(600)] string Comment);
+
+public sealed record SuspendConnectionInput(
+    [property: Required, StringLength(500)] string Reason);
+
+public sealed record TerminateConnectionInput(
+    [property: StringLength(500)] string? Note = null);
+
+public sealed record CustomerDocumentInput(
+    [property: Range(1, int.MaxValue)] int CustomerId,
+    [property: Required, StringLength(40)] string DocumentType,
+    [property: Required, StringLength(200)] string Title,
+    [property: Required, StringLength(500)] string FilePathOrUrl,
+    [property: Range(2000, 2100)] int Year,
+    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode);
+
+public sealed record PlanChangeRequestInput(
+    [property: Range(1, long.MaxValue)] long ConnectionId,
+    [property: Range(1, int.MaxValue)] int TargetPlanId,
+    [property: StringLength(500)] string? Note = null);
+
+public sealed record RejectPlanChangeInput(
+    [property: StringLength(500)] string? Note = null);
+
+public sealed record CustomerQueryInput(
+    [property: Range(1, int.MaxValue)] int CustomerId,
+    [property: Required, StringLength(200)] string Subject,
+    [property: Required, StringLength(40)] string Category,
+    [property: Required, StringLength(1000)] string Question);
+
+public sealed record AnswerQueryInput(
+    [property: Required, StringLength(2000)] string Answer,
+    bool IsFaq = false);
+
+public sealed record RegisterCustomerInput(
+    [property: Required, StringLength(120)] string Name,
+    [property: Required, RegularExpression(@"^\+?[0-9]{7,15}$")] string Phone,
+    [property: Required, StringLength(240)] string Address,
+    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode,
+    [property: Required, RegularExpression("^[a-zA-Z0-9._-]{3,40}$")] string Username,
+    [property: Required, StringLength(128, MinimumLength = 12)] string Password,
+    [property: EmailAddress, StringLength(160)] string? Email = null,
+    [property: StringLength(120)] string? ContactPerson = null,
+    [property: StringLength(32)] string? TaxId = null,
+    [property: StringLength(40)] string? CustomerType = null);
+
+public sealed record CustomerProfileInput(
+    [property: Required, StringLength(120)] string Name,
+    [property: Required, RegularExpression(@"^\+?[0-9]{7,15}$")] string Phone,
+    [property: Required, StringLength(240)] string Address,
+    [property: Required, RegularExpression("^[0-9]{3}$")] string CityCode,
+    [property: EmailAddress, StringLength(160)] string? Email = null,
+    [property: StringLength(120)] string? ContactPerson = null,
+    [property: StringLength(32)] string? TaxId = null,
+    [property: StringLength(40)] string? CustomerType = null);
+
+public sealed record CustomerRequestInput(
+    [property: Range(1, int.MaxValue)] int PlanId,
+    bool HasNexusLandline,
+    [property: Range(1, 10000)] int? ConnectionCount = 1,
+    [property: StringLength(240)] string? Address = null,
+    [property: RegularExpression("^[0-9]{3}$")] string? CityCode = null);
+
+public sealed record CustomerPaymentInput(
+    [property: Range(1, long.MaxValue)] long? InvoiceId = null,
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal? Amount = null,
+    [property: StringLength(250)] string? Note = null);
+
+public sealed record CustomerSelfQueryInput(
+    [property: Required, StringLength(200)] string Subject,
+    [property: Required, StringLength(40)] string Category,
+    [property: Required, StringLength(1000)] string Question);
+

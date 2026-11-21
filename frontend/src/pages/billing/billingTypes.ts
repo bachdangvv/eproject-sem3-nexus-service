@@ -1,3 +1,6 @@
+/**
+ * Shared types, section metadata, and Account ID validation helpers for the Billing Portal.
+ */
 import {
   ApiError,
   type BillingStatus,
@@ -30,14 +33,14 @@ export const BILLING_SECTION_META: Record<BillingSection, BillingSectionMeta> = 
     title: 'Payment Processing',
     tokenLabel: 'Payments',
     subtitle:
-      'Collect and record full manual payments for billed accounts currently in Unpaid status.',
-    countLabel: 'unpaid',
+      'Collect and record manual payments for billed accounts in Unpaid or Partially Paid status.',
+    countLabel: 'pending',
   },
   registry: {
-    title: 'Billing Session Registry',
+    title: 'Billing Accounts Registry',
     tokenLabel: 'Registry',
     subtitle:
-      'Browse, filter, and refresh connected accounts inspected or processed during this session.',
+      'Browse, filter, and refresh connected billing accounts from the live registry.',
     countLabel: 'accounts',
   },
 };
@@ -61,6 +64,7 @@ export const BILLING_STATUS_FILTER_ITEMS: Array<{
   { value: 'ALL', label: 'All Statuses' },
   { value: 'NotBilled', label: 'Not Billed' },
   { value: 'Unpaid', label: 'Unpaid' },
+  { value: 'PartiallyPaid', label: 'Partially Paid' },
   { value: 'Paid', label: 'Paid' },
 ];
 
@@ -131,4 +135,108 @@ export function formatBillingError(
     return `No connected account found for Account ID "${accountId}". Verify the 16-character ID ({D|B|T}{CityCode}{12-digit serial}) and confirm Technical has activated the connection.`;
   }
   return extractErrorMessage(err, fallback);
+}
+
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function computeCollectedAmount(
+  prev: BillingView | null | undefined,
+  updated: BillingView,
+  requestedAmount?: number,
+): number {
+  if (prev && prev.invoiceId != null && prev.invoiceId === updated.invoiceId) {
+    if (updated.payments && prev.payments) {
+      const priorIds = new Set(prev.payments.map((p) => p.id));
+      const newSum = updated.payments
+        .filter((p) => !priorIds.has(p.id))
+        .reduce((acc, p) => acc + p.amount, 0);
+      if (newSum > 0) {
+        return roundCurrency(newSum);
+      }
+    }
+    if (updated.paidAmount !== undefined) {
+      const delta = roundCurrency(updated.paidAmount - (prev.paidAmount ?? 0));
+      if (delta > 0) {
+        return delta;
+      }
+    }
+  }
+
+  const prevDue =
+    prev?.dueAmount ?? (prev?.status === 'Paid' ? 0 : prev?.amount ?? 0);
+  if (requestedAmount !== undefined && prevDue > 0) {
+    return roundCurrency(Math.min(requestedAmount, prevDue));
+  }
+  if (prevDue > 0) {
+    return roundCurrency(prevDue);
+  }
+  return roundCurrency(updated.paidAmount ?? updated.amount);
+}
+
+export function validatePositiveCurrency(
+  raw: string,
+  fieldLabel = 'payment amount',
+): { value: number | null; error: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { value: null, error: `Enter a ${fieldLabel}.` };
+  }
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return {
+      value: null,
+      error: `Enter a valid positive ${fieldLabel} with up to two decimal places.`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return {
+      value: null,
+      error: `${fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1)} must be greater than $0.00.`,
+    };
+  }
+  return { value: parsed, error: null };
+}
+
+export function validateNonNegativeCurrency(
+  raw: string,
+  fieldLabel: string,
+): { value: number | null; error: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { value: 0, error: null };
+  }
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return {
+      value: null,
+      error: `Enter a valid ${fieldLabel} ($0.00 or greater, up to two decimal places).`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { value: null, error: `${fieldLabel} must be $0.00 or greater.` };
+  }
+  return { value: parsed, error: null };
+}
+
+export function validateNonNegativeInt(
+  raw: string,
+  fieldLabel: string,
+): { value: number | null; error: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { value: 0, error: null };
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return {
+      value: null,
+      error: `${fieldLabel} must be a non-negative whole number.`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return { value: null, error: `${fieldLabel} must be 0 or greater.` };
+  }
+  return { value: parsed, error: null };
 }

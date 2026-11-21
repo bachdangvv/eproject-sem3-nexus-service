@@ -1,3 +1,6 @@
+/**
+ * Retail service connection requests, order confirmation, and tariff reference drawer section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -15,6 +18,7 @@ import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
@@ -31,7 +35,12 @@ import {
   ServiceTypeToken,
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
-import { computeBillAmounts } from '../../data/tariffs';
+import {
+  computeBillAmounts,
+  formatPlanCycleLabel,
+  formatPlanPriceWithCycle,
+  SECURITY_DEPOSIT_USD,
+} from '../../data/tariffs';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
 import { getCities, getPlans } from '../../services/catalogApi';
@@ -47,6 +56,7 @@ import type {
   OrderView,
   PlanView,
   RequestView,
+  ServiceTypeCode,
 } from '../../types/nexus';
 import {
   extractErrorMessage,
@@ -59,7 +69,11 @@ import {
 interface RequestFieldErrors {
   customerId?: string;
   planId?: string;
+  connectionCount?: string;
 }
+
+type TariffPlanRow = PlanView & Record<string, unknown>;
+type TariffTypeFilter = 'ALL' | ServiceTypeCode;
 
 export function RetailRequestsSection({
   refreshTrigger,
@@ -80,6 +94,7 @@ export function RetailRequestsSection({
   const [lastConfirmedOrder, setLastConfirmedOrder] = useState<OrderView | null>(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [customerLookupQuery, setCustomerLookupQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [connectionCount, setConnectionCount] = useState('1');
@@ -91,6 +106,10 @@ export function RetailRequestsSection({
   const [confirmTarget, setConfirmTarget] = useState<RequestView | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
+
+  const [isTariffsOpen, setIsTariffsOpen] = useState(false);
+  const [tariffTypeFilter, setTariffTypeFilter] = useState<TariffTypeFilter>('ALL');
+  const [tariffSearch, setTariffSearch] = useState('');
 
   const isMountedRef = useRef(true);
   const requestSeqRef = useRef(0);
@@ -161,6 +180,23 @@ export function RetailRequestsSection({
     void loadCatalogOptions();
   }, [loadCatalogOptions, loadRequests, refreshTrigger]);
 
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    const trimmed = customerLookupQuery.trim();
+    const timer = window.setTimeout(() => {
+      getCustomers(trimmed || undefined)
+        .then((list) => {
+          if (isMountedRef.current) {
+            setCustomers(list);
+          }
+        })
+        .catch(() => {
+          // Preserve existing customer list on lookup failure
+        });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [customerLookupQuery, isCreateOpen]);
+
   const cityNameByCode = useMemo(() => {
     const map = new Map<string, string>();
     for (const city of cities) {
@@ -192,11 +228,16 @@ export function RetailRequestsSection({
     [activeCustomers, formatCityDisplay],
   );
 
+  const plansById = useMemo(
+    () => new Map(plans.map((p) => [p.id, p])),
+    [plans],
+  );
+
   const planOptions = useMemo(
     () =>
       plans.map((p) => ({
         value: String(p.id),
-        label: `${p.name} — ${formatUsd(p.price)}/mo`,
+        label: `${p.name} — ${formatPlanPriceWithCycle(p.price, p.validityMonths)}`,
         description: `${SERVICE_TYPE_LABELS[p.type]}${p.description ? ` · ${p.description}` : ''}`,
       })),
     [plans],
@@ -225,9 +266,27 @@ export function RetailRequestsSection({
       usageChargesUsd: 0,
       equipmentReplacementUsd: 0,
       previousArrearsUsd: 0,
-      advanceAdjustmentUsd: 0,
+      adjustmentUsd: 0,
     });
   }, [selectedPlan, parsedCount]);
+
+  const filteredTariffPlans = useMemo<TariffPlanRow[]>(() => {
+    const needle = tariffSearch.trim().toLowerCase();
+    return plans
+      .filter((p) => (tariffTypeFilter === 'ALL' ? true : p.type === tariffTypeFilter))
+      .filter((p) => {
+        if (!needle) return true;
+        return (
+          p.name.toLowerCase().includes(needle) ||
+          (p.description ?? '').toLowerCase().includes(needle)
+        );
+      })
+      .map((p) => ({ ...p }));
+  }, [plans, tariffSearch, tariffTypeFilter]);
+
+  const tariffPagination = useClientPagination(filteredTariffPlans, {
+    resetKey: `${tariffTypeFilter}::${tariffSearch.trim().toLowerCase()}`,
+  });
 
   const requestRows = useMemo<RequestRow[]>(
     () => requests.map((req) => ({ ...req })),
@@ -236,6 +295,7 @@ export function RetailRequestsSection({
   const pagination = useClientPagination(requestRows);
 
   const openCreateDrawer = () => {
+    setCustomerLookupQuery('');
     setSelectedCustomerId('');
     setSelectedPlanId('');
     setConnectionCount('1');
@@ -253,12 +313,17 @@ export function RetailRequestsSection({
     const errors: RequestFieldErrors = {};
     const parsedCustomerId = Number(selectedCustomerId);
     const parsedPlanId = Number(selectedPlanId);
+    const trimmedCount = connectionCount.trim();
+    const rawCount = /^\d+$/.test(trimmedCount) ? Number(trimmedCount) : NaN;
 
     if (!selectedCustomerId || !Number.isInteger(parsedCustomerId) || parsedCustomerId < 1) {
       errors.customerId = 'Select an active customer.';
     }
     if (!selectedPlanId || !Number.isInteger(parsedPlanId) || parsedPlanId < 1) {
       errors.planId = 'Select an active service plan.';
+    }
+    if (!Number.isSafeInteger(rawCount) || rawCount < 1 || rawCount > 10000) {
+      errors.connectionCount = 'Connection count must be a whole number between 1 and 10,000.';
     }
 
     setFieldErrors(errors);
@@ -274,7 +339,7 @@ export function RetailRequestsSection({
         customerId: parsedCustomerId,
         planId: parsedPlanId,
         hasNexusLandline: isDialUpPlan ? hasNexusLandline : false,
-        connectionCount: parsedCount,
+        connectionCount: rawCount,
       });
       if (!isMountedRef.current) return;
       setIsCreateOpen(false);
@@ -390,10 +455,14 @@ export function RetailRequestsSection({
     },
     {
       key: 'price',
-      header: 'Monthly Rate',
+      header: 'Cycle Rate',
       width: pixel(120),
       align: 'end',
-      renderCell: (row) => <Text weight="semibold">{`${formatUsd(row.price)}/mo`}</Text>,
+      renderCell: (row) => (
+        <Text weight="semibold">
+          {formatPlanPriceWithCycle(row.price, plansById.get(row.planId)?.validityMonths)}
+        </Text>
+      ),
     },
     {
       key: 'createdAt',
@@ -434,11 +503,18 @@ export function RetailRequestsSection({
             </Text>
           </HStack>
 
-          <Button
-            variant="primary"
-            label="New Connection Request"
-            onClick={openCreateDrawer}
-          />
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            <Button
+              variant="secondary"
+              label="View Tariff Plans"
+              onClick={() => setIsTariffsOpen(true)}
+            />
+            <Button
+              variant="primary"
+              label="New Connection Request"
+              onClick={openCreateDrawer}
+            />
+          </HStack>
         </HStack>
 
         {lastConfirmedOrder ? (
@@ -578,6 +654,17 @@ export function RetailRequestsSection({
 
                 <form id="create-request-form" onSubmit={(e) => void handleCreateSubmit(e)}>
                   <FormLayout>
+                    <TextInput
+                      type="search"
+                      label="Lookup Customer in Server Directory"
+                      placeholder="Type CUS code, name, or phone to search all customers..."
+                      startIcon={<Icon icon="search" />}
+                      hasClear
+                      value={customerLookupQuery}
+                      onChange={setCustomerLookupQuery}
+                      description="Queries the server customer directory (/api/customers?q=...) beyond the latest 100 profiles."
+                    />
+
                     <Selector
                       label="Active Customer"
                       placeholder="Select an active customer..."
@@ -645,8 +732,16 @@ export function RetailRequestsSection({
                       placeholder="1"
                       inputMode="numeric"
                       value={connectionCount}
-                      onChange={(value) => setConnectionCount(value)}
-                      description="10–14 lines: 25% bulk discount; 15–24: 50%; 25–50: 75%; >50: 100% off advance rental & deposit."
+                      onChange={(value) => {
+                        setConnectionCount(value);
+                        setFieldErrors((prev) => ({ ...prev, connectionCount: undefined }));
+                      }}
+                      description="10–14 lines: 25% bulk discount; 15–24: 50%; 25–50: 75%; >50: 100% off plan rental & deposit."
+                      status={
+                        fieldErrors.connectionCount
+                          ? { type: 'error', message: fieldErrors.connectionCount }
+                          : undefined
+                      }
                     />
                   </FormLayout>
                 </form>
@@ -680,8 +775,10 @@ export function RetailRequestsSection({
                           'Not selected'
                         )}
                       </MetadataListItem>
-                      <MetadataListItem label="Monthly Tariff">
-                        {selectedPlan ? `${formatUsd(selectedPlan.price)}/mo` : '—'}
+                      <MetadataListItem label="Cycle Tariff">
+                        {selectedPlan
+                          ? formatPlanPriceWithCycle(selectedPlan.price, selectedPlan.validityMonths)
+                          : '—'}
                       </MetadataListItem>
                       <MetadataListItem label="Connections">
                         <Text weight="medium">
@@ -825,11 +922,17 @@ export function RetailRequestsSection({
                         <MetadataListItem label="City Territory">
                           {formatCityDisplay(confirmTarget.cityCode)}
                         </MetadataListItem>
-                        <MetadataListItem label="Monthly Rate">
-                          {`${formatUsd(confirmTarget.price)}/mo`}
+                        <MetadataListItem label="Cycle Rate">
+                          {formatPlanPriceWithCycle(
+                            confirmTarget.price,
+                            plansById.get(confirmTarget.planId)?.validityMonths,
+                          )}
                         </MetadataListItem>
                         <MetadataListItem label="Installation Address">
                           {confirmTarget.address}
+                        </MetadataListItem>
+                        <MetadataListItem label="Connections">
+                          {`${confirmTarget.connectionCount ?? 1} ${(confirmTarget.connectionCount ?? 1) > 1 ? 'lines (Bulk Order)' : 'line'}`}
                         </MetadataListItem>
                         <MetadataListItem label="Dial-Up Landline">
                           {confirmTarget.type === 'D'
@@ -869,6 +972,169 @@ export function RetailRequestsSection({
           }
         />
       </Dialog>
+
+      <Drawer
+        isOpen={isTariffsOpen}
+        onOpenChange={setIsTariffsOpen}
+        side="end"
+        width={720}
+        label="Service Tariff Plans"
+      >
+        <Layout
+          header={
+            <DrawerHeader
+              title="Active Service Tariff Plans"
+              subtitle="Read-only reference for Dial-Up, Broadband, and Landline rates, cycles, and deposits."
+              onOpenChange={setIsTariffsOpen}
+            />
+          }
+          content={
+            <LayoutContent>
+              <VStack gap={4}>
+                <Card variant="muted" padding={3}>
+                  <VStack gap={1}>
+                    <Text weight="semibold">Refundable Security Deposits & Bulk Waivers</Text>
+                    <Text type="supporting">
+                      {`Broadband ${formatUsd(SECURITY_DEPOSIT_USD.B)} · Dial-Up ${formatUsd(SECURITY_DEPOSIT_USD.D)} · Landline ${formatUsd(SECURITY_DEPOSIT_USD.T)}.`}
+                    </Text>
+                    <Text type="supporting">
+                      Bulk discounts on plan rental & deposit: 10–14 lines (25%), 15–24 lines (50%), 25–50 lines (75%), 51+ lines (100%).
+                    </Text>
+                  </VStack>
+                </Card>
+
+                <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
+                  <SegmentedControl
+                    size="sm"
+                    label="Filter tariff plans by type"
+                    value={tariffTypeFilter}
+                    onChange={(val) => setTariffTypeFilter(val as TariffTypeFilter)}
+                  >
+                    <SegmentedControlItem value="ALL" label="All" />
+                    <SegmentedControlItem value="D" label="Dial-Up" />
+                    <SegmentedControlItem value="B" label="Broadband" />
+                    <SegmentedControlItem value="T" label="Landline" />
+                  </SegmentedControl>
+                  <HStack gap={2} vAlign="center" wrap="wrap">
+                    <TextInput
+                      type="search"
+                      label="Search tariff plans"
+                      isLabelHidden
+                      placeholder="Search plan name or specs..."
+                      startIcon={<Icon icon="search" />}
+                      hasClear
+                      width={220}
+                      value={tariffSearch}
+                      onChange={setTariffSearch}
+                    />
+                    <Badge variant="neutral" label={`${filteredTariffPlans.length} plans`} />
+                  </HStack>
+                </HStack>
+
+                <Table<TariffPlanRow>
+                  aria-label="Retail Tariff Plans Reference"
+                  density="compact"
+                  dividers="rows"
+                  hasHover
+                  idKey="id"
+                  data={tariffPagination.paginatedItems}
+                  rowIndexStart={tariffPagination.rowIndexStart}
+                  rowCount={tariffPagination.totalItems}
+                  columns={[
+                    {
+                      key: 'name',
+                      header: 'Plan',
+                      width: proportional(1.6, { minWidth: 165 }),
+                      renderCell: (row) => (
+                        <VStack gap={0.5}>
+                          <Text weight="semibold">{row.name}</Text>
+                          <Text type="supporting" maxLines={2}>
+                            {row.description || '—'}
+                          </Text>
+                        </VStack>
+                      ),
+                    },
+                    {
+                      key: 'type',
+                      header: 'Type',
+                      width: pixel(120),
+                      renderCell: (row) => <ServiceTypeToken type={row.type} />,
+                    },
+                    {
+                      key: 'validityMonths',
+                      header: 'Cycle',
+                      width: pixel(125),
+                      renderCell: (row) => (
+                        <Text type="supporting">{formatPlanCycleLabel(row.validityMonths)}</Text>
+                      ),
+                    },
+                    {
+                      key: 'price',
+                      header: 'Cycle Rate',
+                      width: pixel(110),
+                      align: 'end',
+                      renderCell: (row) => (
+                        <Text weight="semibold" hasTabularNumbers>
+                          {formatPlanPriceWithCycle(row.price, row.validityMonths)}
+                        </Text>
+                      ),
+                    },
+                    {
+                      key: 'specs',
+                      header: 'Specs / Call Tariffs',
+                      width: proportional(1.2, { minWidth: 150 }),
+                      renderCell: (row) => {
+                        if (row.type === 'T') {
+                          return (
+                            <Text type="supporting">
+                              {`Local ${formatUsd(row.localCallRate ?? 0)} · STD ${formatUsd(row.stdCallRate ?? 0)} · Msg ${formatUsd(row.mobileMsgRate ?? 0)}`}
+                            </Text>
+                          );
+                        }
+                        const parts: string[] = [];
+                        if (row.hoursAllowance != null) parts.push(`${row.hoursAllowance} hrs`);
+                        if (row.speedKbps != null) parts.push(`${row.speedKbps} Kbps`);
+                        return (
+                          <Text type="supporting">
+                            {parts.length > 0 ? parts.join(' · ') : '—'}
+                          </Text>
+                        );
+                      },
+                    },
+                  ]}
+                  emptyState={
+                    <EmptyState
+                      title="No active plans match"
+                      description="Try clearing the search query or switching to All service types."
+                      icon={<Icon icon="info" />}
+                      isCompact
+                    />
+                  }
+                />
+                <TablePaginationFooter
+                  page={tariffPagination.page}
+                  pageSize={tariffPagination.pageSize}
+                  totalItems={tariffPagination.totalItems}
+                  onPageChange={tariffPagination.setPage}
+                  onPageSizeChange={tariffPagination.setPageSize}
+                  label="Tariff plans pagination"
+                />
+              </VStack>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack hAlign="end">
+                <Button
+                  variant="secondary"
+                  label="Close"
+                  onClick={() => setIsTariffsOpen(false)}
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Drawer>
     </Card>
   );
 }

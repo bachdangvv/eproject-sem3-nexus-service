@@ -1,4 +1,11 @@
-export type UserRole = 'Admin' | 'Retail' | 'Technical' | 'Billing';
+/**
+ * Shared TypeScript domain models, DTO interfaces, and API error definitions
+ * for the Nexus Service Marketing System frontend.
+ */
+
+export type StaffRole = 'Admin' | 'Retail' | 'Technical' | 'Billing';
+
+export type UserRole = StaffRole | 'Customer';
 
 export type ServiceTypeCode = 'D' | 'B' | 'T';
 
@@ -15,6 +22,8 @@ export interface SessionResponse {
   username: string | null;
   displayName: string | null;
   role: UserRole | null;
+  customerId?: number | null;
+  customerCode?: string | null;
   backendOffline?: boolean;
 }
 
@@ -30,6 +39,12 @@ export interface PlanView {
   description: string;
   price: number;
   active: boolean;
+  localCallRate?: number;
+  stdCallRate?: number;
+  mobileMsgRate?: number;
+  validityMonths: number;
+  hoursAllowance?: number | null;
+  speedKbps?: number | null;
 }
 
 export interface ProductView {
@@ -46,6 +61,9 @@ export interface EmployeeView {
   username: string;
   displayName: string;
   role: UserRole;
+  active?: boolean;
+  retailShopId?: number | null;
+  customerId?: number | null;
 }
 
 export interface CustomerView {
@@ -178,6 +196,10 @@ export interface BillingView {
   billingPeriodStart?: string | null;
   billingPeriodEnd?: string | null;
   paidByUsername?: string | null;
+  connectionStatus?: ConnectionStatus | string;
+  refundStatus?: RefundStatus;
+  refundAmount?: number;
+  refundedAt?: string | null;
   invoices?: InvoiceItemView[];
   payments?: PaymentItemView[];
 }
@@ -187,9 +209,10 @@ export interface PublicTrackView {
   id: string;
   orderId: string;
   serviceType: PublicServiceType;
-  status: OrderStatus | 'ACTIVE';
+  status: OrderStatus | ConnectionStatus | 'ACTIVE';
   cityCode: string;
   accountId: string | null;
+  dueAmount?: number | null;
 }
 
 export interface LoginInput {
@@ -202,12 +225,22 @@ export interface CityInput {
   name: string;
 }
 
+export interface CityUpdateInput {
+  name: string;
+}
+
 export interface PlanInput {
   name: string;
   type: ServiceTypeCode;
   description?: string | null;
   price: number;
   active: boolean;
+  localCallRate?: number;
+  stdCallRate?: number;
+  mobileMsgRate?: number;
+  validityMonths?: number;
+  hoursAllowance?: number | null;
+  speedKbps?: number | null;
 }
 
 export interface ProductInput {
@@ -322,6 +355,10 @@ export interface EquipmentStockView {
   allocatedCount: number;
 }
 
+export interface EquipmentInventorySummaryView {
+  pendingFeasibleOrders: number;
+}
+
 export interface EquipmentIncidentView {
   id: number;
   connectionId: number;
@@ -352,8 +389,73 @@ export interface ConnectOrderInput {
 export interface EmployeeInput {
   username: string;
   displayName: string;
-  role: UserRole;
+  role: StaffRole;
   password: string;
+}
+
+export interface RegisterCustomerInput {
+  name: string;
+  phone: string;
+  address: string;
+  cityCode: string;
+  username: string;
+  password: string;
+  email?: string | null;
+  contactPerson?: string | null;
+  taxId?: string | null;
+  customerType?: string | null;
+}
+
+export interface CustomerRegistrationView {
+  customerId: number;
+  customerCode: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+}
+
+export interface CustomerProfileView extends CustomerView {
+  username: string;
+  active: boolean;
+}
+
+export interface CustomerProfileInput {
+  name: string;
+  phone: string;
+  address: string;
+  cityCode: string;
+  email?: string | null;
+  contactPerson?: string | null;
+  taxId?: string | null;
+  customerType?: string | null;
+}
+
+export interface CustomerRequestInput {
+  planId: number;
+  hasNexusLandline: boolean;
+  connectionCount?: number;
+  address?: string | null;
+  cityCode?: string | null;
+}
+
+export interface CustomerPaymentInput {
+  invoiceId?: number | null;
+  amount?: number | null;
+  note?: string | null;
+}
+
+export interface CustomerSelfQueryInput {
+  subject: string;
+  category: CustomerQueryCategory;
+  question: string;
+}
+
+export interface EmployeeUpdateInput {
+  displayName: string;
+  role: UserRole;
+  password?: string | null;
+  active?: boolean;
+  retailShopId?: number | null;
 }
 
 export interface CustomerInput {
@@ -391,6 +493,10 @@ export interface RecordPaymentInput {
   note?: string;
 }
 
+export interface RefundDepositInput {
+  note?: string | null;
+}
+
 export interface AssessmentInput {
   distanceOk: boolean;
   serverAvailable: boolean;
@@ -406,6 +512,208 @@ export interface FeedbackInput {
 export interface OrderQueryParams {
   code?: string;
   status?: OrderStatus | '';
+}
+
+export type ConnectionStatus = 'Active' | 'TemporarilyInactive' | 'PermanentlyInactive';
+
+export type RefundStatus = 'Pending' | 'Refunded' | 'Processed' | 'Forfeited' | 'None' | string;
+
+export interface ConnectionLifecycleView {
+  id: number;
+  accountId: string;
+  orderId: number;
+  type: ServiceTypeCode;
+  cityCode: string;
+  status: ConnectionStatus;
+  suspendReason: string | null;
+  suspendedAt: string | null;
+  terminatedAt: string | null;
+  refundStatus: RefundStatus | null;
+  refundAmount: number | null;
+  customerName: string;
+  customerPhone: string;
+  planName: string;
+  activatedAt: string;
+}
+
+export interface SuspendConnectionInput {
+  reason: string;
+}
+
+export interface TerminateConnectionInput {
+  note?: string | null;
+}
+
+export interface ConnectionQueryParams {
+  q?: string;
+  code?: string;
+  customerName?: string;
+  serviceType?: string;
+  phone?: string;
+  fromDate?: string;
+  toDate?: string;
+  status?: string;
+  cityCode?: string;
+}
+
+export interface OrderSearchParams {
+  code?: string;
+  customerName?: string;
+  serviceType?: ServiceTypeCode | 'ALL' | string;
+  phone?: string;
+  fromDate?: string;
+  toDate?: string;
+  status?: OrderStatus | 'ALL' | string;
+}
+
+export interface OrderAdvancedSearchFilters {
+  code: string;
+  customerName: string;
+  serviceType: string;
+  fromDate: string;
+  toDate: string;
+  phone: string;
+}
+
+export const DEFAULT_ADVANCED_SEARCH_FILTERS: OrderAdvancedSearchFilters = {
+  code: '',
+  customerName: '',
+  serviceType: 'ALL',
+  fromDate: '',
+  toDate: '',
+  phone: '',
+};
+
+export type CustomerDocumentType =
+  | 'AddressProof'
+  | 'RegistrationForm'
+  | 'PaymentReceipt'
+  | 'Other';
+
+export interface CustomerDocumentView {
+  id: number;
+  customerId: number;
+  customerName: string;
+  documentType: CustomerDocumentType;
+  title: string;
+  filePathOrUrl: string;
+  originalFileName: string | null;
+  contentType: string | null;
+  fileSizeBytes: number | null;
+  hasStoredFile: boolean;
+  year: number;
+  cityCode: string;
+  uploadedAt: string;
+  uploadedById: number;
+  uploadedByName: string | null;
+}
+
+export interface CustomerDocumentInput {
+  customerId: number;
+  documentType: CustomerDocumentType;
+  title: string;
+  filePathOrUrl: string;
+  year: number;
+  cityCode: string;
+}
+
+export interface UploadCustomerDocumentInput {
+  customerId: number;
+  documentType: CustomerDocumentType;
+  title: string;
+  year: number;
+  cityCode: string;
+  file: File;
+}
+
+export interface DocumentQueryParams {
+  year?: number;
+  cityCode?: string;
+  customerId?: number;
+  documentType?: CustomerDocumentType | 'ALL' | string;
+}
+
+export type PlanChangeStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface PlanChangeRequestView {
+  id: number;
+  connectionId: number;
+  accountId: string | null;
+  customerName: string;
+  serviceType: ServiceTypeCode | string;
+  currentPlanId: number;
+  currentPlanName: string;
+  currentPlanPrice: number;
+  targetPlanId: number;
+  targetPlanName: string;
+  targetPlanPrice: number;
+  requestedAt: string;
+  status: PlanChangeStatus;
+  note: string | null;
+  reviewedById: number | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+}
+
+export interface PlanChangeRequestInput {
+  connectionId: number;
+  targetPlanId: number;
+  note?: string | null;
+}
+
+export interface RejectPlanChangeInput {
+  note?: string | null;
+}
+
+export interface PlanChangeQueryParams {
+  status?: PlanChangeStatus | 'ALL' | string;
+  connectionId?: number;
+}
+
+export type CustomerQueryStatus = 'Open' | 'Answered' | 'Closed';
+
+export type CustomerQueryCategory = 'Billing' | 'Technical' | 'Plan' | 'General';
+
+export interface CustomerQueryView {
+  id: number;
+  customerId: number;
+  customerName: string;
+  subject: string;
+  category: CustomerQueryCategory | string;
+  question: string;
+  answer: string | null;
+  status: CustomerQueryStatus;
+  createdAt: string;
+  answeredAt: string | null;
+  answeredById: number | null;
+  answeredByName: string | null;
+  isFaq: boolean;
+}
+
+export interface FaqItemView {
+  id: number;
+  category: CustomerQueryCategory | string;
+  subject: string;
+  question: string;
+  answer: string;
+}
+
+export interface CustomerQueryInput {
+  customerId: number;
+  subject: string;
+  category: CustomerQueryCategory;
+  question: string;
+}
+
+export interface AnswerQueryInput {
+  answer: string;
+  isFaq: boolean;
+}
+
+export interface CustomerQueryParams {
+  status?: CustomerQueryStatus | 'ALL' | string;
+  category?: CustomerQueryCategory | 'ALL' | string;
+  customerId?: number;
 }
 
 export interface ApiErrorShape {
@@ -453,4 +761,7 @@ export interface ServicePlan {
   mobileMsgRateUsd?: number;
   description: string;
   active: boolean;
+  validityMonths?: 1 | 3 | 6 | 12;
+  hoursAllowance?: number | null;
+  speedKbps?: number | null;
 }

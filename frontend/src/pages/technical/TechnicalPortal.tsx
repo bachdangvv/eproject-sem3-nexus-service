@@ -1,3 +1,7 @@
+/**
+ * Technical operations portal shell routing across feasibility assessments, connection
+ * activations/lifecycle/plan-change reviews, order pipeline, and hardware stock.
+ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -9,16 +13,20 @@ import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
+import { PlanChangesSection } from '../shared/PlanChangesSection';
 import { TechnicalAssessmentsSection } from './TechnicalAssessmentsSection';
 import { TechnicalConnectionsSection } from './TechnicalConnectionsSection';
 import { TechnicalEquipmentSection } from './TechnicalEquipmentSection';
+import { TechnicalLifecycleSection } from './TechnicalLifecycleSection';
 import { TechnicalOrdersSection } from './TechnicalOrdersSection';
 import { TECHNICAL_SECTION_META, type TechnicalSection } from './technicalTypes';
 
 const SECTION_ROUTE_MAP: Record<TechnicalSection, RoutePathValue> = {
   assessments: RoutePath.TECHNICAL_ASSESSMENTS,
   connections: RoutePath.TECHNICAL_CONNECTIONS,
+  lifecycle: RoutePath.TECHNICAL_LIFECYCLE,
   equipment: RoutePath.TECHNICAL_EQUIPMENT,
+  'plan-changes': RoutePath.TECHNICAL_PLAN_CHANGES,
   orders: RoutePath.TECHNICAL_ORDERS,
 };
 
@@ -86,6 +94,10 @@ export function TechnicalPortal({ section }: { section: TechnicalSection }): JSX
         return <TechnicalConnectionsSection key="connections" {...sharedProps} />;
       case 'equipment':
         return <TechnicalEquipmentSection key="equipment" {...sharedProps} />;
+      case 'lifecycle':
+        return <TechnicalLifecycleSection key="lifecycle" {...sharedProps} />;
+      case 'plan-changes':
+        return <PlanChangesSection key="plan-changes" roleMode="technical" {...sharedProps} />;
       case 'orders':
         return <TechnicalOrdersSection key="orders" {...sharedProps} />;
     }
@@ -107,7 +119,11 @@ export function TechnicalPortal({ section }: { section: TechnicalSection }): JSX
           <HStack gap={3} vAlign="center" wrap="wrap">
             <SegmentedControl
               label="Technical portal sections"
-              value={section}
+              value={
+                section === 'lifecycle' || section === 'plan-changes'
+                  ? 'connections'
+                  : section
+              }
               onChange={(val) => {
                 const target = val as TechnicalSection;
                 if (target !== section) {
@@ -135,6 +151,24 @@ export function TechnicalPortal({ section }: { section: TechnicalSection }): JSX
           </HStack>
         </HStack>
       </Card>
+
+      {(section === 'connections' || section === 'lifecycle' || section === 'plan-changes') && (
+        <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+          <SegmentedControl
+            label="Technical connection management view"
+            value={section}
+            onChange={(val) => {
+              if (val === 'lifecycle') navigate(RoutePath.TECHNICAL_LIFECYCLE);
+              else if (val === 'plan-changes') navigate(RoutePath.TECHNICAL_PLAN_CHANGES);
+              else navigate(RoutePath.TECHNICAL_CONNECTIONS);
+            }}
+          >
+            <SegmentedControlItem value="connections" label="Activation Queue" />
+            <SegmentedControlItem value="lifecycle" label="Active Lifecycle" />
+            <SegmentedControlItem value="plan-changes" label="Plan Change Reviews" />
+          </SegmentedControl>
+        </HStack>
+      )}
 
       {renderSection()}
     </VStack>

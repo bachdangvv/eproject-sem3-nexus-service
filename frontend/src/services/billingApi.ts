@@ -2,6 +2,7 @@ import type {
   BillingView,
   CreateInvoiceInput,
   RecordPaymentInput,
+  RefundDepositInput,
 } from '../types/nexus';
 import { apiRequest } from './apiClient';
 
@@ -51,6 +52,19 @@ export function recordPayment(
 ): Promise<BillingView> {
   return apiRequest<BillingView>(
     `/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/payment`,
+    {
+      method: 'POST',
+      body: input ? JSON.stringify(input) : undefined,
+    },
+  );
+}
+
+export function refundDeposit(
+  accountId: string,
+  input?: RefundDepositInput,
+): Promise<BillingView> {
+  return apiRequest<BillingView>(
+    `/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/refund`,
     {
       method: 'POST',
       body: input ? JSON.stringify(input) : undefined,

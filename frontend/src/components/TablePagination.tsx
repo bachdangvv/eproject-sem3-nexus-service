@@ -1,3 +1,6 @@
+/**
+ * Standardized table pagination footer component wrapping @astryxdesign/core Pagination.
+ */
 import type { JSX } from 'react';
 import { Divider } from '@astryxdesign/core/Divider';
 import { HStack } from '@astryxdesign/core/HStack';

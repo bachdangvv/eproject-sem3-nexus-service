@@ -141,7 +141,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
   }
-  if (!headers.has('Content-Type') && fetchOptions.body !== undefined) {
+  const isFormData = typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
+  if (!isFormData && !headers.has('Content-Type') && fetchOptions.body !== undefined) {
     headers.set('Content-Type', 'application/json');
   }
   if (method !== 'GET' && method !== 'HEAD' && cachedCsrfToken) {
@@ -173,7 +174,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     if (!response.ok) {
       if (response.status === 401) {
         clearCsrfToken();
-        if (normalizedPath !== '/login') {
+        if (normalizedPath !== '/login' && normalizedPath !== '/register') {
           unauthorizedHandler?.();
         }
       }

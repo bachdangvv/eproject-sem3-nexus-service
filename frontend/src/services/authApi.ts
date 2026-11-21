@@ -1,5 +1,14 @@
-import { ApiError, type LoginInput, type SessionResponse } from '../types/nexus';
-import { apiRequest, clearCsrfToken, getCsrfToken } from './apiClient';
+/**
+ * Authentication API client for session bootstrap, login, self-registration, and logout.
+ */
+import {
+  ApiError,
+  type CustomerRegistrationView,
+  type LoginInput,
+  type RegisterCustomerInput,
+  type SessionResponse,
+} from '../types/nexus';
+import { apiRequest, clearCsrfToken, getCsrfToken, normalizeOptionalString } from './apiClient';
 
 let inFlightSessionRequest: Promise<SessionResponse> | null = null;
 
@@ -44,6 +53,30 @@ export async function login(username: string, password: string): Promise<Session
     body: JSON.stringify(payload),
   });
   return getSession();
+}
+
+export async function registerCustomer(
+  input: RegisterCustomerInput,
+): Promise<CustomerRegistrationView> {
+  if (!getCsrfToken()) {
+    await getSession();
+  }
+  const payload: RegisterCustomerInput = {
+    name: input.name.trim(),
+    phone: input.phone.trim(),
+    address: input.address.trim(),
+    cityCode: input.cityCode.trim(),
+    username: input.username.trim(),
+    password: input.password,
+    email: normalizeOptionalString(input.email),
+    contactPerson: normalizeOptionalString(input.contactPerson),
+    taxId: normalizeOptionalString(input.taxId),
+    customerType: normalizeOptionalString(input.customerType),
+  };
+  return apiRequest<CustomerRegistrationView>('/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function logout(): Promise<SessionResponse> {

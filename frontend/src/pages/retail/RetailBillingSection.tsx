@@ -41,6 +41,10 @@ import type {
   RecordPaymentInput,
 } from '../../types/nexus';
 import {
+  computeCollectedAmount,
+  validatePositiveCurrency,
+} from '../billing/billingTypes';
+import {
   extractErrorMessage,
   type RetailSectionProps,
 } from './retailTypes';
@@ -79,6 +83,7 @@ export function RetailBillingSection({
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentAmountError, setPaymentAmountError] = useState<string | null>(null);
   const [paymentNote, setPaymentNote] = useState('');
   const [collecting, setCollecting] = useState(false);
 
@@ -171,6 +176,7 @@ export function RetailBillingSection({
     setSelectedRecord(rec);
     setDrawerError(null);
     setShowPaymentForm(false);
+    setPaymentAmountError(null);
     setDrawerOpen(true);
     setDrawerLoading(true);
 
@@ -195,21 +201,21 @@ export function RetailBillingSection({
     e.preventDefault();
     if (!selectedRecord || collectingRef.current || collecting) return;
 
-    const due = selectedRecord.dueAmount ?? (selectedRecord.status === 'Paid' ? 0 : selectedRecord.amount);
-    const parsedAmount = parseFloat(paymentAmount);
-    const amountToPay = !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : due;
-
-    if (amountToPay <= 0) {
-      setDrawerError('Please enter a valid positive payment amount.');
+    const { value: validatedAmount, error: validationError } =
+      validatePositiveCurrency(paymentAmount);
+    if (validationError || validatedAmount === null) {
+      setPaymentAmountError(validationError ?? 'Please enter a valid positive payment amount.');
       return;
     }
 
+    const prevRecord = selectedRecord;
     collectingRef.current = true;
     setCollecting(true);
+    setPaymentAmountError(null);
     setDrawerError(null);
 
     const input: RecordPaymentInput = {
-      amount: amountToPay,
+      amount: validatedAmount,
       channel: 'RetailOutlet',
       note: paymentNote.trim() || 'In-store retail counter collection',
     };
@@ -217,15 +223,21 @@ export function RetailBillingSection({
     try {
       const updated = await recordRetailPayment(selectedRecord.accountId, input);
       if (!isMountedRef.current) return;
+      const collectedAmount = computeCollectedAmount(prevRecord, updated, validatedAmount);
       setSelectedRecord(updated);
       setAccounts((prev) =>
         prev.map((item) => (item.accountId === updated.accountId ? updated : item)),
       );
       setShowPaymentForm(false);
       setPaymentAmount('');
+      setPaymentAmountError(null);
       setPaymentNote('');
       toast({
-        body: `Collected in-store payment of ${formatUsd(amountToPay)} for account ${updated.accountId}.`,
+        body: `Collected in-store payment of ${formatUsd(collectedAmount)} for account ${updated.accountId}${
+          updated.status === 'PartiallyPaid'
+            ? ` (${formatUsd(updated.dueAmount ?? 0)} remaining)`
+            : ''
+        }.`,
       });
       collectingRef.current = false;
       setCollecting(false);
@@ -347,12 +359,24 @@ export function RetailBillingSection({
     {
       key: 'channel',
       header: 'Channel',
-      width: pixel(110),
+      width: pixel(120),
       renderCell: (p: PaymentItemView & Record<string, unknown>) => (
         <Token
           size="sm"
-          color={p.channel === 'RetailOutlet' ? 'purple' : 'blue'}
-          label={p.channel === 'RetailOutlet' ? 'Retail Outlet' : 'City Office'}
+          color={
+            p.channel === 'CustomerPortal'
+              ? 'teal'
+              : p.channel === 'RetailOutlet'
+                ? 'purple'
+                : 'blue'
+          }
+          label={
+            p.channel === 'CustomerPortal'
+              ? 'Customer Portal'
+              : p.channel === 'RetailOutlet'
+                ? 'Retail Outlet'
+                : 'City Office'
+          }
         />
       ),
     },
@@ -378,6 +402,16 @@ export function RetailBillingSection({
     selectedRecord?.dueAmount ??
     (selectedRecord?.status === 'Paid' ? 0 : selectedRecord?.amount ?? 0);
 
+  const drawerPaymentRows = useMemo(
+    () =>
+      (selectedRecord?.payments ?? []) as unknown as (PaymentItemView & Record<string, unknown>)[],
+    [selectedRecord?.payments],
+  );
+
+  const paymentPagination = useClientPagination(drawerPaymentRows, {
+    resetKey: selectedRecord?.accountId ?? '',
+  });
+
   return (
     <VStack gap={4}>
       <Card padding={4}>
@@ -386,7 +420,7 @@ export function RetailBillingSection({
             <TextInput
               type="search"
               label="Search Connected Accounts"
-              placeholder="Search by Account ID, Order ID, customer, or plan..."
+              placeholder="Search by Account ID, Order ID, customer, phone, or city..."
               startIcon={<Icon icon="search" />}
               hasClear
               value={searchQuery}
@@ -565,7 +599,7 @@ export function RetailBillingSection({
                             <Text type="supporting">Active Period</Text>
                           )}
                         </MetadataListItem>
-                        <MetadataListItem label="Advance Plan Rental">
+                        <MetadataListItem label="Plan Rental">
                           <Text weight="semibold">
                             {formatUsd(selectedRecord.rentalAmount ?? selectedRecord.amount)}
                           </Text>
@@ -657,8 +691,17 @@ export function RetailBillingSection({
                               label="Amount to Collect ($)"
                               placeholder={String(activeDue)}
                               inputMode="decimal"
-                              value={paymentAmount || String(activeDue)}
-                              onChange={setPaymentAmount}
+                              hasClear
+                              value={paymentAmount}
+                              onChange={(val) => {
+                                setPaymentAmount(val);
+                                if (paymentAmountError) setPaymentAmountError(null);
+                              }}
+                              status={
+                                paymentAmountError
+                                  ? { type: 'error', message: paymentAmountError }
+                                  : undefined
+                              }
                               description={`Outstanding balance: ${formatUsd(activeDue)}. Enter lesser amount for partial settlement.`}
                               isRequired
                             />
@@ -688,17 +731,26 @@ export function RetailBillingSection({
                   {/* Payment Transactions */}
                   <VStack gap={3}>
                     <Heading level={4}>Payment Collection History</Heading>
-                    {selectedRecord.payments && selectedRecord.payments.length > 0 ? (
-                      <Table<PaymentItemView & Record<string, unknown>>
-                        aria-label="Retail Payment History Table"
-                        density="compact"
-                        columns={drawerPaymentColumns}
-                        data={
-                          selectedRecord.payments as unknown as (PaymentItemView &
-                            Record<string, unknown>)[]
-                        }
-                        idKey="id"
-                      />
+                    {drawerPaymentRows.length > 0 ? (
+                      <VStack gap={3}>
+                        <Table<PaymentItemView & Record<string, unknown>>
+                          aria-label="Retail Payment History Table"
+                          density="compact"
+                          columns={drawerPaymentColumns}
+                          data={paymentPagination.paginatedItems}
+                          rowIndexStart={paymentPagination.rowIndexStart}
+                          rowCount={paymentPagination.totalItems}
+                          idKey="id"
+                        />
+                        <TablePaginationFooter
+                          page={paymentPagination.page}
+                          pageSize={paymentPagination.pageSize}
+                          totalItems={paymentPagination.totalItems}
+                          onPageChange={paymentPagination.setPage}
+                          onPageSizeChange={paymentPagination.setPageSize}
+                          label="Retail payment history pagination"
+                        />
+                      </VStack>
                     ) : (
                       <Card padding={4} variant="muted">
                         <Text type="supporting">No payments have been received for this account.</Text>
@@ -742,6 +794,7 @@ export function RetailBillingSection({
                       isDisabled={collecting || drawerLoading}
                       onClick={() => {
                         setPaymentAmount(String(activeDue));
+                        setPaymentAmountError(null);
                         setShowPaymentForm(true);
                       }}
                     />

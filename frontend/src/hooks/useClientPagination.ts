@@ -1,3 +1,6 @@
+/**
+ * Client-side pagination and item focus hook for staff data tables.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export const DEFAULT_PAGE_SIZE = 10;

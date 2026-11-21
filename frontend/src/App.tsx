@@ -1,3 +1,6 @@
+/**
+ * Root application shell, sign-in view, role-based navigation layout, and route dispatcher.
+ */
 import { useEffect, useState, type FormEvent } from 'react';
 import { AppShell } from '@astryxdesign/core/AppShell';
 import { AspectRatio } from '@astryxdesign/core/AspectRatio';
@@ -32,7 +35,9 @@ import { ApiErrorBanner, OfflineBanner } from './components/StatusViews';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { HomePage } from './pages/HomePage';
 import { AdminPortal } from './pages/admin/AdminPortal';
+import { RegisterPage } from './pages/auth/RegisterPage';
 import { BillingPortal } from './pages/billing/BillingPortal';
+import { CustomerPortal } from './pages/customer/CustomerPortal';
 import { RetailPortal } from './pages/retail/RetailPortal';
 import { TechnicalPortal } from './pages/technical/TechnicalPortal';
 import {
@@ -54,7 +59,7 @@ function AccessDeniedView({ currentRole }: { currentRole: UserRole }) {
     <Card padding={6}>
       <EmptyState
         title="Access Denied"
-        description={`You are currently signed in as ${currentRole}. This route is restricted to a different department role.`}
+        description={`You are currently signed in as ${currentRole}. This route is restricted to a different portal role.`}
         icon={<Icon icon="warning" />}
         actions={
           <HStack gap={2} wrap="wrap">
@@ -86,7 +91,7 @@ function NotFoundView() {
     <Card padding={6}>
       <EmptyState
         title="Page Not Found"
-        description="The requested Nexus page does not exist. Return to the home page or your department workspace."
+        description="The requested Nexus page does not exist. Return to the home page or your workspace."
         icon={<Icon icon="info" />}
         actions={
           <HStack gap={2} wrap="wrap">
@@ -150,6 +155,12 @@ function SignInPage() {
     }
   };
 
+  const fillDemoCredentials = (demoUsername: string) => {
+    setUsername(demoUsername);
+    setPassword('Nexus-Demo-2026!');
+    setLocalError(null);
+  };
+
   return (
     <Grid columns={{ minWidth: 320, max: 2 }} gap={0} width="100%" minHeight="100%">
       <Section variant="section" padding={0} width="100%" height="100%" minHeight="100%">
@@ -162,7 +173,7 @@ function SignInPage() {
 
           <StackItem size="fill">
             <Center width="100%" height="100%" paddingInline={6} paddingBlock={8}>
-              <VStack gap={5} width="100%" maxWidth={360}>
+              <VStack gap={5} width="100%" maxWidth={380}>
                 <VStack gap={1.5}>
                   <Heading level={1} type="display-3">
                     Hey, welcome back
@@ -186,7 +197,7 @@ function SignInPage() {
                       autoComplete="username"
                       value={username}
                       onChange={setUsername}
-                      placeholder="e.g. retail.demo"
+                      placeholder="e.g. customer.demo or retail.demo"
                       isRequired
                     />
                     <TextInput
@@ -206,12 +217,57 @@ function SignInPage() {
                         label="Sign in"
                         isLoading={submitting}
                       />
-                      <Link href={RoutePath.HOME} type="supporting" color="secondary" hasUnderline>
-                        Back to Home
-                      </Link>
+                      <HStack gap={3} vAlign="center" wrap="wrap">
+                        <Link href={RoutePath.REGISTER} type="supporting" color="primary" hasUnderline>
+                          Create Customer Account
+                        </Link>
+                        <Link href={RoutePath.HOME} type="supporting" color="secondary" hasUnderline>
+                          Back to Home
+                        </Link>
+                      </HStack>
                     </HStack>
                   </FormLayout>
                 </form>
+
+                <Section variant="muted" padding={3}>
+                  <VStack gap={2}>
+                    <Text type="eyebrow" display="block">
+                      DEMO QUICK-FILL
+                    </Text>
+                    <HStack gap={2} wrap="wrap">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        label="Fill customer.demo"
+                        onClick={() => fillDemoCredentials('customer.demo')}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        label="admin.demo"
+                        onClick={() => fillDemoCredentials('admin.demo')}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        label="retail.demo"
+                        onClick={() => fillDemoCredentials('retail.demo')}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        label="technical.demo"
+                        onClick={() => fillDemoCredentials('technical.demo')}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        label="billing.demo"
+                        onClick={() => fillDemoCredentials('billing.demo')}
+                      />
+                    </HStack>
+                  </VStack>
+                </Section>
               </VStack>
             </Center>
           </StackItem>
@@ -241,16 +297,17 @@ function NexusAppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const authenticatedRole = session?.username && session?.role ? session.role : null;
-  const isLoginRoute = path === RoutePath.LOGIN;
-  const isStaffWorkspaceRoute =
+  const isAuthRoute = path === RoutePath.LOGIN || path === RoutePath.REGISTER;
+  const isWorkspaceRoute =
     path.startsWith('/admin') ||
     path.startsWith('/retail') ||
     path.startsWith('/technical') ||
-    path.startsWith('/billing');
+    path.startsWith('/billing') ||
+    path.startsWith('/customer');
   const isInOwnWorkspace = Boolean(
     authenticatedRole && path.startsWith(`/${authenticatedRole.toLowerCase()}`),
   );
-  const showSideNav = Boolean(authenticatedRole) && isStaffWorkspaceRoute;
+  const showSideNav = Boolean(authenticatedRole) && isWorkspaceRoute;
   const sidebarTitle =
     authenticatedRole === 'Admin'
       ? '▲ ADMIN OPERATIONS'
@@ -260,7 +317,9 @@ function NexusAppContent() {
           ? '▲ TECHNICAL DEPARTMENT'
           : authenticatedRole === 'Billing'
             ? '▲ BILLING DEPARTMENT'
-            : null;
+            : authenticatedRole === 'Customer'
+              ? '▲ CUSTOMER PORTAL'
+              : null;
   const publicMaxWidth = path === RoutePath.TRACK ? 880 : 1280;
 
   const renderRoute = () => {
@@ -271,6 +330,46 @@ function NexusAppContent() {
         return <HomePage initialMode="track" />;
       case RoutePath.LOGIN:
         return <SignInPage />;
+      case RoutePath.REGISTER:
+        return <RegisterPage />;
+
+      case RoutePath.CUSTOMER:
+      case RoutePath.CUSTOMER_PROFILE:
+        return (
+          <RoleGuard
+            allowedRole="Customer"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <CustomerPortal section="profile" />
+          </RoleGuard>
+        );
+      case RoutePath.CUSTOMER_ORDERS:
+        return (
+          <RoleGuard
+            allowedRole="Customer"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <CustomerPortal section="orders" />
+          </RoleGuard>
+        );
+      case RoutePath.CUSTOMER_BILLING:
+        return (
+          <RoleGuard
+            allowedRole="Customer"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <CustomerPortal section="billing" />
+          </RoleGuard>
+        );
+      case RoutePath.CUSTOMER_SUPPORT:
+        return (
+          <RoleGuard
+            allowedRole="Customer"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <CustomerPortal section="support" />
+          </RoleGuard>
+        );
 
       case RoutePath.ADMIN:
       case RoutePath.ADMIN_PLANS:
@@ -354,6 +453,33 @@ function NexusAppContent() {
             <AdminPortal section="vendor-payments" />
           </RoleGuard>
         );
+      case RoutePath.ADMIN_DOCUMENTS:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="documents" />
+          </RoleGuard>
+        );
+      case RoutePath.ADMIN_PLAN_CHANGES:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="plan-changes" />
+          </RoleGuard>
+        );
+      case RoutePath.ADMIN_QUERIES:
+        return (
+          <RoleGuard
+            allowedRole="Admin"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <AdminPortal section="queries" />
+          </RoleGuard>
+        );
 
       case RoutePath.RETAIL:
       case RoutePath.RETAIL_CUSTOMERS:
@@ -390,6 +516,42 @@ function NexusAppContent() {
             accessDenied={(role) => <AccessDeniedView currentRole={role} />}
           >
             <RetailPortal section="billing" />
+          </RoleGuard>
+        );
+      case RoutePath.RETAIL_LIFECYCLE:
+        return (
+          <RoleGuard
+            allowedRole="Retail"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <RetailPortal section="lifecycle" />
+          </RoleGuard>
+        );
+      case RoutePath.RETAIL_DOCUMENTS:
+        return (
+          <RoleGuard
+            allowedRole="Retail"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <RetailPortal section="documents" />
+          </RoleGuard>
+        );
+      case RoutePath.RETAIL_PLAN_CHANGES:
+        return (
+          <RoleGuard
+            allowedRole="Retail"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <RetailPortal section="plan-changes" />
+          </RoleGuard>
+        );
+      case RoutePath.RETAIL_QUERIES:
+        return (
+          <RoleGuard
+            allowedRole="Retail"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <RetailPortal section="queries" />
           </RoleGuard>
         );
 
@@ -430,6 +592,24 @@ function NexusAppContent() {
             <TechnicalPortal section="orders" />
           </RoleGuard>
         );
+      case RoutePath.TECHNICAL_LIFECYCLE:
+        return (
+          <RoleGuard
+            allowedRole="Technical"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <TechnicalPortal section="lifecycle" />
+          </RoleGuard>
+        );
+      case RoutePath.TECHNICAL_PLAN_CHANGES:
+        return (
+          <RoleGuard
+            allowedRole="Technical"
+            accessDenied={(role) => <AccessDeniedView currentRole={role} />}
+          >
+            <TechnicalPortal section="plan-changes" />
+          </RoleGuard>
+        );
 
       case RoutePath.BILLING:
       case RoutePath.BILLING_ACCOUNTS:
@@ -468,12 +648,12 @@ function NexusAppContent() {
   return (
     <AppShell
       variant={showSideNav ? 'elevated' : 'wash'}
-      height={showSideNav || isLoginRoute ? 'fill' : 'auto'}
-      contentPadding={isLoginRoute ? 0 : showSideNav ? 6 : 5}
+      height={showSideNav || isAuthRoute ? 'fill' : 'auto'}
+      contentPadding={isAuthRoute ? 0 : showSideNav ? 6 : 5}
       mobileNav={showSideNav ? { breakpoint: 'md' } : false}
       banner={backendOffline ? <OfflineBanner onRetry={refreshSession} /> : undefined}
       topNav={
-        isLoginRoute ? undefined : (
+        isAuthRoute ? undefined : (
           <TopNav
           label="Primary navigation"
           heading={
@@ -525,12 +705,20 @@ function NexusAppContent() {
                   />
                 </>
               ) : (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  label="Staff Sign In"
-                  href={RoutePath.LOGIN}
-                />
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    label="Register"
+                    href={RoutePath.REGISTER}
+                  />
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    label="Sign In"
+                    href={RoutePath.LOGIN}
+                  />
+                </>
               )}
             </HStack>
           }
@@ -586,7 +774,11 @@ function NexusAppContent() {
                   label="Service Plans"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:plans" /> : undefined}
                   href={RoutePath.ADMIN_PLANS}
-                  isSelected={path === RoutePath.ADMIN || path === RoutePath.ADMIN_PLANS}
+                  isSelected={
+                    path === RoutePath.ADMIN ||
+                    path === RoutePath.ADMIN_PLANS ||
+                    path === RoutePath.ADMIN_PLAN_CHANGES
+                  }
                 />
                 <SideNavItem
                   label="Products & Equipment"
@@ -595,10 +787,22 @@ function NexusAppContent() {
                   isSelected={path === RoutePath.ADMIN_PRODUCTS}
                 />
                 <SideNavItem
-                  label="Territory Cities"
+                  label="Cities & Outlets"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:cities" /> : undefined}
                   href={RoutePath.ADMIN_CITIES}
-                  isSelected={path === RoutePath.ADMIN_CITIES}
+                  isSelected={
+                    path === RoutePath.ADMIN_CITIES || path === RoutePath.ADMIN_RETAIL_SHOPS
+                  }
+                />
+                <SideNavItem
+                  label="Vendors & Procurement"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:vendors" /> : undefined}
+                  href={RoutePath.ADMIN_VENDORS}
+                  isSelected={
+                    path === RoutePath.ADMIN_VENDORS ||
+                    path === RoutePath.ADMIN_PURCHASES ||
+                    path === RoutePath.ADMIN_VENDOR_PAYMENTS
+                  }
                 />
                 <SideNavItem
                   label="Employees"
@@ -610,31 +814,15 @@ function NexusAppContent() {
                   label="Customers"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:customers" /> : undefined}
                   href={RoutePath.ADMIN_CUSTOMERS}
-                  isSelected={path === RoutePath.ADMIN_CUSTOMERS}
+                  isSelected={
+                    path === RoutePath.ADMIN_CUSTOMERS || path === RoutePath.ADMIN_DOCUMENTS
+                  }
                 />
                 <SideNavItem
-                  label="Retail Outlets"
-                  icon={isSidebarCollapsed ? <Icon icon="nexus:shops" /> : undefined}
-                  href={RoutePath.ADMIN_RETAIL_SHOPS}
-                  isSelected={path === RoutePath.ADMIN_RETAIL_SHOPS}
-                />
-                <SideNavItem
-                  label="Vendors"
-                  icon={isSidebarCollapsed ? <Icon icon="nexus:vendors" /> : undefined}
-                  href={RoutePath.ADMIN_VENDORS}
-                  isSelected={path === RoutePath.ADMIN_VENDORS}
-                />
-                <SideNavItem
-                  label="Equipment Purchases"
-                  icon={isSidebarCollapsed ? <Icon icon="nexus:purchases" /> : undefined}
-                  href={RoutePath.ADMIN_PURCHASES}
-                  isSelected={path === RoutePath.ADMIN_PURCHASES}
-                />
-                <SideNavItem
-                  label="Vendor Payments"
-                  icon={isSidebarCollapsed ? <Icon icon="nexus:payments" /> : undefined}
-                  href={RoutePath.ADMIN_VENDOR_PAYMENTS}
-                  isSelected={path === RoutePath.ADMIN_VENDOR_PAYMENTS}
+                  label="Queries & FAQ"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:queries" /> : undefined}
+                  href={RoutePath.ADMIN_QUERIES}
+                  isSelected={path === RoutePath.ADMIN_QUERIES}
                 />
               </SideNavSection>
             )}
@@ -645,7 +833,11 @@ function NexusAppContent() {
                   label="Customers"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:customers" /> : undefined}
                   href={RoutePath.RETAIL_CUSTOMERS}
-                  isSelected={path === RoutePath.RETAIL || path === RoutePath.RETAIL_CUSTOMERS}
+                  isSelected={
+                    path === RoutePath.RETAIL ||
+                    path === RoutePath.RETAIL_CUSTOMERS ||
+                    path === RoutePath.RETAIL_DOCUMENTS
+                  }
                 />
                 <SideNavItem
                   label="Service Requests"
@@ -660,10 +852,24 @@ function NexusAppContent() {
                   isSelected={path === RoutePath.RETAIL_ORDERS}
                 />
                 <SideNavItem
+                  label="Connections"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:lifecycle" /> : undefined}
+                  href={RoutePath.RETAIL_LIFECYCLE}
+                  isSelected={
+                    path === RoutePath.RETAIL_LIFECYCLE || path === RoutePath.RETAIL_PLAN_CHANGES
+                  }
+                />
+                <SideNavItem
                   label="Billing & Payments"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:billing" /> : undefined}
                   href={RoutePath.RETAIL_BILLING}
                   isSelected={path === RoutePath.RETAIL_BILLING}
+                />
+                <SideNavItem
+                  label="Queries & FAQ"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:queries" /> : undefined}
+                  href={RoutePath.RETAIL_QUERIES}
+                  isSelected={path === RoutePath.RETAIL_QUERIES}
                 />
               </SideNavSection>
             )}
@@ -679,10 +885,14 @@ function NexusAppContent() {
                   }
                 />
                 <SideNavItem
-                  label="Connection Activation"
+                  label="Connections"
                   icon={isSidebarCollapsed ? <Icon icon="nexus:connections" /> : undefined}
                   href={RoutePath.TECHNICAL_CONNECTIONS}
-                  isSelected={path === RoutePath.TECHNICAL_CONNECTIONS}
+                  isSelected={
+                    path === RoutePath.TECHNICAL_CONNECTIONS ||
+                    path === RoutePath.TECHNICAL_LIFECYCLE ||
+                    path === RoutePath.TECHNICAL_PLAN_CHANGES
+                  }
                 />
                 <SideNavItem
                   label="Equipment & Maintenance"
@@ -723,11 +933,42 @@ function NexusAppContent() {
                 />
               </SideNavSection>
             )}
+
+            {authenticatedRole === 'Customer' && (
+              <SideNavSection title="Customer Portal" isHeaderHidden>
+                <SideNavItem
+                  label="Profile"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:customers" /> : undefined}
+                  href={RoutePath.CUSTOMER_PROFILE}
+                  isSelected={
+                    path === RoutePath.CUSTOMER || path === RoutePath.CUSTOMER_PROFILE
+                  }
+                />
+                <SideNavItem
+                  label="Orders & Requests"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:orders" /> : undefined}
+                  href={RoutePath.CUSTOMER_ORDERS}
+                  isSelected={path === RoutePath.CUSTOMER_ORDERS}
+                />
+                <SideNavItem
+                  label="Connections & Billing"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:billing" /> : undefined}
+                  href={RoutePath.CUSTOMER_BILLING}
+                  isSelected={path === RoutePath.CUSTOMER_BILLING}
+                />
+                <SideNavItem
+                  label="Support & Plan Change"
+                  icon={isSidebarCollapsed ? <Icon icon="nexus:queries" /> : undefined}
+                  href={RoutePath.CUSTOMER_SUPPORT}
+                  isSelected={path === RoutePath.CUSTOMER_SUPPORT}
+                />
+              </SideNavSection>
+            )}
           </SideNav>
         ) : undefined
       }
     >
-      {showSideNav || isLoginRoute ? (
+      {showSideNav || isAuthRoute ? (
         renderRoute()
       ) : (
         <Center axis="horizontal" width="100%">

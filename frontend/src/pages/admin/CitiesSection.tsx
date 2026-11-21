@@ -1,14 +1,19 @@
+/**
+ * Admin 3-digit territory city code registration and update section (GET/POST/PUT /api/cities).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
 import { Grid } from '@astryxdesign/core/Grid';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
+import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
@@ -18,7 +23,7 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { ApiErrorBanner, CopyableId } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
-import { createCity, getCities } from '../../services/catalogApi';
+import { createCity, getCities, updateCity } from '../../services/catalogApi';
 import type { CityView } from '../../types/nexus';
 import {
   CITY_CODE_REGEX,
@@ -45,6 +50,11 @@ export function CitiesSection({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [serverFieldErrors, setServerFieldErrors] = useState<{ code?: string; name?: string }>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const [editingCity, setEditingCity] = useState<CityView | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const hasLoadedOnceRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -183,6 +193,33 @@ export function CitiesSection({
     }
   };
 
+  const handleEditCitySubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingCity || savingEdit) return;
+    const nextName = editName.trim();
+    if (!nextName || nextName.length > 100) {
+      setEditError('City name is required (1–100 characters).');
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateCity(editingCity.code, { name: nextName });
+      if (!isMountedRef.current) return;
+      setEditingCity(null);
+      toast({ body: `Updated city ${updated.code} to "${updated.name}".` });
+      pagination.focusItem((item) => item.code === updated.code);
+      await loadCities(true);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setEditError(extractErrorMessage(err, 'Could not update city name.'));
+    } finally {
+      if (isMountedRef.current) {
+        setSavingEdit(false);
+      }
+    }
+  };
+
   const columns: TableColumn<CityRow>[] = [
     {
       key: 'code',
@@ -195,6 +232,24 @@ export function CitiesSection({
       header: 'City Name',
       width: proportional(1, { minWidth: 160 }),
       renderCell: (row) => <Text weight="semibold">{row.name}</Text>,
+    },
+    {
+      key: 'actions',
+      header: 'Action',
+      width: pixel(110),
+      align: 'end',
+      renderCell: (row) => (
+        <Button
+          size="sm"
+          variant="secondary"
+          label="Edit"
+          onClick={() => {
+            setEditingCity(row);
+            setEditName(row.name);
+            setEditError(null);
+          }}
+        />
+      ),
     },
   ];
 
@@ -314,6 +369,68 @@ export function CitiesSection({
           )}
         </VStack>
       </Card>
+
+      <Dialog
+        isOpen={editingCity !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) setEditingCity(null);
+        }}
+        purpose="form"
+        width={460}
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={editingCity ? `Edit City ${editingCity.code}` : 'Edit City'}
+              subtitle="Update the territory display name while preserving its 3-digit code."
+              onOpenChange={(open) => {
+                if (!open && !savingEdit) setEditingCity(null);
+              }}
+            />
+          }
+          content={
+            <LayoutContent>
+              <VStack gap={4}>
+                <ApiErrorBanner
+                  title="Could not update city"
+                  error={editError}
+                  onDismiss={() => setEditError(null)}
+                />
+                <form id="edit-city-form" onSubmit={(e) => void handleEditCitySubmit(e)}>
+                  <FormLayout>
+                    <TextInput
+                      label="City Name"
+                      isRequired
+                      value={editName}
+                      onChange={setEditName}
+                    />
+                  </FormLayout>
+                </form>
+              </VStack>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack hAlign="end" gap={2}>
+                <Button
+                  variant="ghost"
+                  label="Cancel"
+                  isDisabled={savingEdit}
+                  onClick={() => setEditingCity(null)}
+                />
+                <Button
+                  type="submit"
+                  form="edit-city-form"
+                  variant="primary"
+                  label="Save Changes"
+                  isLoading={savingEdit}
+                  isDisabled={savingEdit || !editName.trim()}
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
     </Grid>
   );
 }

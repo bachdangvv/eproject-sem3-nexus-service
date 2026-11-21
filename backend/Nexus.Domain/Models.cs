@@ -1,14 +1,18 @@
 namespace Nexus.Domain;
 
+/// <summary>Canonical authorization role constants.</summary>
 public static class Roles
 {
     public const string Admin = "Admin";
     public const string Retail = "Retail";
     public const string Technical = "Technical";
     public const string Billing = "Billing";
-    public static readonly string[] All = [Admin, Retail, Technical, Billing];
+    public const string Customer = "Customer";
+    public static readonly string[] Staff = [Admin, Retail, Technical, Billing];
+    public static readonly string[] All = [Admin, Retail, Technical, Billing, Customer];
 }
 
+/// <summary>User account with role assignment and optional retail shop or customer affiliation.</summary>
 public sealed class Employee
 {
     public int Id { get; set; }
@@ -16,6 +20,11 @@ public sealed class Employee
     public required string DisplayName { get; set; }
     public required string Role { get; set; }
     public required string PasswordHash { get; set; }
+    public bool Active { get; set; } = true;
+    public int? RetailShopId { get; set; }
+    public RetailShop? RetailShop { get; set; }
+    public int? CustomerId { get; set; }
+    public Customer? Customer { get; set; }
 }
 
 public sealed class City
@@ -39,6 +48,7 @@ public sealed class Customer
     public string? CustomerType { get; set; }
     public string? Status { get; set; }
     public City City { get; set; } = null!;
+    public bool IsSuspended => string.Equals(Status, "SUSPENDED", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class ServicePlan
@@ -52,6 +62,9 @@ public sealed class ServicePlan
     public decimal LocalCallRate { get; set; }
     public decimal StdCallRate { get; set; }
     public decimal MobileMsgRate { get; set; }
+    public int ValidityMonths { get; set; } = 1; // 1, 3, 6, or 12
+    public int? HoursAllowance { get; set; }
+    public int? SpeedKbps { get; set; }
 }
 
 public sealed class Product
@@ -81,9 +94,12 @@ public sealed class ServiceRequest
     public int ConnectionCount { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int CreatedById { get; set; }
+    public int? RetailShopId { get; set; }
+    public RetailShop? RetailShop { get; set; }
     public bool Confirmed { get; private set; }
     public ServiceOrder? Order { get; set; }
 
+    /// <summary>Confirms the request and creates an initial Pending service order with audit history.</summary>
     public ServiceOrder Confirm(int actorId)
     {
         Confirmed = true;
@@ -110,6 +126,7 @@ public sealed class ServiceOrder
     public List<OrderEvent> History { get; set; } = [];
     public List<ServiceFeedback> Feedback { get; set; } = [];
 
+    /// <summary>Evaluates technical feasibility (including landline availability for Dial-Up) and logs audit history.</summary>
     public void Assess(bool? distanceOk, bool? serverAvailable, bool? landlineFeasible, string? note, int actorId)
     {
         if (Status != OrderStatus.Pending)
@@ -132,6 +149,7 @@ public sealed class ServiceOrder
         });
     }
 
+    /// <summary>Activates a Feasible order into a Connected subscriber account with optional equipment allocation.</summary>
     public void Activate(int actorId, int? productId = null)
     {
         if (Status != OrderStatus.Feasible)
@@ -186,6 +204,16 @@ public sealed class Connection
     public required string CityCode { get; set; }
     public string AccountId => $"{Type}{CityCode}{Id:D12}";
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
+    public string Status { get; set; } = "Active"; // Active, TemporarilyInactive, PermanentlyInactive
+    public string? SuspendReason { get; set; }
+    public DateTime? SuspendedAt { get; set; }
+    public DateTime? TerminatedAt { get; set; }
+    public string? RefundStatus { get; set; }
+    public decimal? RefundAmount { get; set; }
+    public DateTime? RefundedAt { get; set; }
+    public int? RefundedById { get; set; }
+    public Employee? RefundedBy { get; set; }
+    public string? RefundNote { get; set; }
     public int? AssignedProductId { get; set; }
     public Product? AssignedProduct { get; set; }
     public List<Invoice> Invoices { get; set; } = [];
@@ -283,10 +311,12 @@ public sealed class EquipmentIncident
     public bool Settled { get; set; } = false;
 }
 
+/// <summary>Statutory tax rate, per-service security deposits, and bulk corporate discount tiers.</summary>
 public static class FinancialConstants
 {
     public const decimal ServiceTaxRate = 0.1224m; // 12.24% government service tax
 
+    /// <summary>Returns the base refundable security deposit in USD for a service type code.</summary>
     public static decimal GetSecurityDeposit(string type) => type switch
     {
         "D" => 325m, // Dial-up refundable security deposit
@@ -295,6 +325,7 @@ public static class FinancialConstants
         _ => 0m
     };
 
+    /// <summary>Returns the bulk connection deposit discount percentage (25%–100%) for corporate tiers.</summary>
     public static int GetBulkDiscountPercent(int connectionCount)
     {
         var qty = Math.Max(1, connectionCount);
@@ -330,8 +361,10 @@ public sealed class Invoice
     public decimal TotalAmount { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal DueAmount { get; set; }
-    public string Status { get; set; } = "Unpaid"; // Unpaid, PartiallyPaid, Paid
+    public string Status { get; set; } = "Unpaid"; // Unpaid, PartiallyPaid, Paid, RolledOver
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? CreatedById { get; set; }
+    public Employee? CreatedBy { get; set; }
     public DateTime? PaidAt { get; set; }
     public int? PaidById { get; set; }
     public Employee? PaidBy { get; set; }
@@ -347,6 +380,8 @@ public sealed class PaymentTransaction
     public DateTime PaidAt { get; set; } = DateTime.UtcNow;
     public int PaidById { get; set; }
     public Employee PaidBy { get; set; } = null!;
+    public int? RetailShopId { get; set; }
+    public RetailShop? RetailShop { get; set; }
     public string Channel { get; set; } = "CityOffice"; // CityOffice | RetailOutlet
     public string? Note { get; set; }
 }
@@ -360,4 +395,62 @@ public sealed class ServiceFeedback
     public int Rating { get; set; }
     public required string Comment { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class CustomerDocument
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+    public required string DocumentType { get; set; } // 'AddressProof', 'RegistrationForm', 'PaymentReceipt', 'Other'
+    public required string Title { get; set; }
+    public required string FilePathOrUrl { get; set; }
+    public string? OriginalFileName { get; set; }
+    public string? ContentType { get; set; }
+    public long? FileSizeBytes { get; set; }
+    public int Year { get; set; }
+    public required string CityCode { get; set; }
+    public City? City { get; set; }
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public int UploadedById { get; set; }
+    public Employee UploadedBy { get; set; } = null!;
+}
+
+public sealed class PlanChangeRequest
+{
+    public int Id { get; set; }
+    public long ConnectionId { get; set; }
+    public Connection Connection { get; set; } = null!;
+    public int TargetPlanId { get; set; }
+    public ServicePlan TargetPlan { get; set; } = null!;
+    public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
+    public int? RequestedById { get; set; }
+    public Employee? RequestedBy { get; set; }
+    public string Status { get; set; } = "Pending"; // 'Pending', 'Approved', 'Rejected'
+    public string? Note { get; set; }
+    public int? ReviewedById { get; set; }
+    public Employee? ReviewedBy { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+}
+
+public sealed class CustomerQuery
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+    public required string Subject { get; set; }
+    public required string Category { get; set; } // 'Billing', 'Technical', 'Plan', 'General'
+    public required string Question { get; set; }
+    public string? Answer { get; set; }
+    public string Status { get; set; } = "Open"; // 'Open', 'Answered', 'Closed'
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? CreatedById { get; set; }
+    public Employee? CreatedBy { get; set; }
+    public DateTime? AnsweredAt { get; set; }
+    public int? AnsweredById { get; set; }
+    public Employee? AnsweredBy { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public int? ClosedById { get; set; }
+    public Employee? ClosedBy { get; set; }
+    public bool IsFaq { get; set; } = false;
 }

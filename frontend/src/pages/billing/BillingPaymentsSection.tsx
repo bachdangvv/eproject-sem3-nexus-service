@@ -1,3 +1,6 @@
+/**
+ * Billing unpaid and partially paid invoice collection queue section.
+ */
 import {
   useCallback,
   useEffect,
@@ -31,10 +34,16 @@ import {
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
-import { getBillingAccount, recordPayment } from '../../services/billingApi';
-import { ApiError, type BillingView, type RecordPaymentInput } from '../../types/nexus';
+import { getBillingAccount, recordPayment, refundDeposit } from '../../services/billingApi';
+import {
+  ApiError,
+  type BillingView,
+  type RecordPaymentInput,
+  type RefundDepositInput,
+} from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
+  computeCollectedAmount,
   formatBillingError,
   isValidAccountId,
   normalizeAccountId,
@@ -60,7 +69,11 @@ export function BillingPaymentsSection({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [payingAccountId, setPayingAccountId] = useState<string | null>(null);
-  const [lastPaidRecord, setLastPaidRecord] = useState<BillingView | null>(null);
+  const [refundingDeposit, setRefundingDeposit] = useState(false);
+  const [lastPaymentNotice, setLastPaymentNotice] = useState<{
+    record: BillingView;
+    collectedAmount: number;
+  } | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerRecord, setDrawerRecord] = useState<BillingView | null>(null);
@@ -72,6 +85,7 @@ export function BillingPaymentsSection({
   const batchSeqRef = useRef(0);
   const drawerSeqRef = useRef(0);
   const processingPaymentRef = useRef(false);
+  const refundingDepositRef = useRef(false);
   const hasMountedRefreshRef = useRef(false);
   const recordsRef = useRef(records);
 
@@ -89,7 +103,7 @@ export function BillingPaymentsSection({
   const unpaidRows = useMemo<BillingRow[]>(
     () =>
       records
-        .filter((rec) => rec.status === 'Unpaid')
+        .filter((rec) => rec.status === 'Unpaid' || rec.status === 'PartiallyPaid')
         .map((rec) => ({ ...rec })),
     [records],
   );
@@ -201,7 +215,7 @@ export function BillingPaymentsSection({
       if (!isMountedRef.current || seq !== requestSeqRef.current) return;
       onRecordUpsert(account);
       onSelectAccount(account.accountId);
-      if (account.status !== 'Unpaid') {
+      if (account.status !== 'Unpaid' && account.status !== 'PartiallyPaid') {
         setDrawerRecord(account);
         setDrawerError(null);
         setDrawerLoading(false);
@@ -221,9 +235,17 @@ export function BillingPaymentsSection({
 
   const handleRecordPayment = async (accountId: string, input?: RecordPaymentInput) => {
     const normalized = normalizeAccountId(accountId);
-    if (!normalized || processingPaymentRef.current || payingAccountId !== null) {
+    if (
+      !normalized ||
+      processingPaymentRef.current ||
+      payingAccountId !== null ||
+      refundingDepositRef.current
+    ) {
       return;
     }
+    const prevRecord =
+      recordsRef.current.find((r) => r.accountId === normalized) ??
+      (drawerRecord?.accountId === normalized ? drawerRecord : null);
     processingPaymentRef.current = true;
     setPayingAccountId(normalized);
     setActionError(null);
@@ -233,12 +255,17 @@ export function BillingPaymentsSection({
       const updated = await recordPayment(normalized, input);
       if (!isMountedRef.current) return;
       onRecordUpsert(updated);
-      setLastPaidRecord(updated);
+      const collectedAmount = computeCollectedAmount(prevRecord, updated, input?.amount);
+      setLastPaymentNotice({ record: updated, collectedAmount });
       setDrawerRecord((prev) =>
         prev && prev.accountId === updated.accountId ? updated : prev,
       );
       toast({
-        body: `Recorded payment of ${formatUsd(input?.amount ?? updated.amount)} for ${updated.accountId}.`,
+        body: `Recorded payment of ${formatUsd(collectedAmount)} for ${updated.accountId}${
+          updated.status === 'PartiallyPaid'
+            ? ` (${formatUsd(updated.dueAmount ?? 0)} remaining)`
+            : ''
+        }.`,
       });
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -266,6 +293,61 @@ export function BillingPaymentsSection({
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
         setPayingAccountId(null);
+      }
+    }
+  };
+
+  const handleRefundDeposit = async (accountId: string, input?: RefundDepositInput) => {
+    const normalized = normalizeAccountId(accountId);
+    if (
+      !normalized ||
+      refundingDepositRef.current ||
+      processingPaymentRef.current ||
+      payingAccountId !== null
+    ) {
+      return;
+    }
+    refundingDepositRef.current = true;
+    setRefundingDeposit(true);
+    setActionError(null);
+    setDrawerError(null);
+
+    try {
+      const updated = await refundDeposit(normalized, input);
+      if (!isMountedRef.current) return;
+      onRecordUpsert(updated);
+      setDrawerRecord((prev) =>
+        prev && prev.accountId === updated.accountId ? updated : prev,
+      );
+      toast({
+        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
+      });
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      const msg = formatBillingError(
+        err,
+        normalized,
+        `Could not disburse security deposit refund for ${normalized}.`,
+      );
+      setActionError(msg);
+      if (drawerOpen) {
+        setDrawerError(msg);
+      }
+      if (err instanceof ApiError && err.status === 409) {
+        void getBillingAccount(normalized)
+          .then((fresh) => {
+            if (!isMountedRef.current) return;
+            onRecordUpsert(fresh);
+            setDrawerRecord((prev) =>
+              prev && prev.accountId === fresh.accountId ? fresh : prev,
+            );
+          })
+          .catch(() => { });
+      }
+    } finally {
+      refundingDepositRef.current = false;
+      if (isMountedRef.current) {
+        setRefundingDeposit(false);
       }
     }
   };
@@ -339,7 +421,11 @@ export function BillingPaymentsSection({
       header: 'Amount Due',
       width: pixel(120),
       align: 'end',
-      renderCell: (row) => <Text weight="semibold">{formatUsd(row.amount)}</Text>,
+      renderCell: (row) => (
+        <Text weight="semibold">
+          {formatUsd(row.dueAmount ?? (row.status === 'Paid' ? 0 : row.amount))}
+        </Text>
+      ),
     },
     {
       key: 'status',
@@ -379,11 +465,11 @@ export function BillingPaymentsSection({
         <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
           <VStack gap={1}>
             <HStack gap={2} vAlign="center">
-              <Heading level={2}>Unpaid Invoices Queue</Heading>
-              <Badge variant="neutral" label={`${unpaidRows.length} unpaid`} />
+              <Heading level={2}>Pending Payments Queue</Heading>
+              <Badge variant="neutral" label={`${unpaidRows.length} pending`} />
             </HStack>
             <Text type="supporting">
-              Pull up an Account ID or settle pending Unpaid billing records from this session.
+              Pull up an Account ID or settle pending Unpaid and Partially Paid billing records.
             </Text>
           </VStack>
 
@@ -414,19 +500,23 @@ export function BillingPaymentsSection({
           </form>
         </HStack>
 
-        {lastPaidRecord ? (
+        {lastPaymentNotice ? (
           <Banner
             status="success"
             container="card"
             collapsible={false}
             isDismissable
-            onDismiss={() => setLastPaidRecord(null)}
-            title={`Payment Settled - ${lastPaidRecord.accountId}`}
-            description={`Recorded full manual payment of ${formatUsd(lastPaidRecord.amount)} for ${lastPaidRecord.customerName}.`}
+            onDismiss={() => setLastPaymentNotice(null)}
+            title={`Payment ${lastPaymentNotice.record.status === 'Paid' ? 'Settled' : 'Recorded'} - ${lastPaymentNotice.record.accountId}`}
+            description={`Recorded ${lastPaymentNotice.record.status === 'Paid' ? 'full' : 'partial'} manual payment of ${formatUsd(lastPaymentNotice.collectedAmount)} for ${lastPaymentNotice.record.customerName}.${
+              lastPaymentNotice.record.status === 'PartiallyPaid'
+                ? ` Remaining balance: ${formatUsd(lastPaymentNotice.record.dueAmount ?? 0)}.`
+                : ''
+            }`}
             endContent={
-              lastPaidRecord.paidAt ? (
+              lastPaymentNotice.record.paidAt ? (
                 <Timestamp
-                  value={lastPaidRecord.paidAt}
+                  value={lastPaymentNotice.record.paidAt}
                   format="date_time"
                   timezoneID="UTC"
                   isTimezoneShown
@@ -454,8 +544,8 @@ export function BillingPaymentsSection({
           rowCount={pagination.totalItems}
           emptyState={
             <EmptyState
-              title="No unpaid accounts in session"
-              description="Look up a billed Unpaid Account ID above or return to Account Lookup to generate a new billing record."
+              title="No pending unpaid accounts"
+              description="Look up a billed Unpaid or Partially Paid Account ID above or return to Account Lookup to generate a new billing record."
               icon={<Icon icon="check" />}
               actions={
                 <Button
@@ -473,7 +563,7 @@ export function BillingPaymentsSection({
           totalItems={pagination.totalItems}
           onPageChange={pagination.setPage}
           onPageSizeChange={pagination.setPageSize}
-          label="Unpaid billing accounts pagination"
+          label="Pending billing accounts pagination"
         />
       </VStack>
 
@@ -483,11 +573,12 @@ export function BillingPaymentsSection({
         isOpen={drawerOpen}
         onOpenChange={handleDrawerOpenChange}
         isLoading={drawerLoading}
-        actionLoading={payingAccountId !== null}
+        actionLoading={payingAccountId !== null || refundingDeposit}
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </Card>
   );

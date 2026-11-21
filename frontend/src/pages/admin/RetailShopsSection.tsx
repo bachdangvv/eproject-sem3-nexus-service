@@ -1,3 +1,6 @@
+/**
+ * Admin retail outlets and territory storefront management section (GET/POST/PUT/DELETE /api/admin/retail-shops).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -35,6 +38,8 @@ import type { CityView, RetailShopInput, RetailShopView } from '../../types/nexu
 import {
   extractErrorMessage,
   extractFieldErrors,
+  SHOP_VENDOR_CODE_REGEX,
+  STAFF_PHONE_REGEX,
   type AdminSectionProps,
   type RetailShopRow,
 } from './adminTypes';
@@ -70,8 +75,8 @@ function validateShopForm(form: RetailShopFormState): RetailShopFieldErrors {
   const trimmedCode = form.code.trim();
   if (!trimmedCode) {
     errors.code = 'Outlet code is required (e.g. HND01).';
-  } else if (!/^[a-zA-Z0-9_-]{2,20}$/.test(trimmedCode)) {
-    errors.code = 'Outlet code must be 2-20 alphanumeric characters (e.g. HND01).';
+  } else if (!SHOP_VENDOR_CODE_REGEX.test(trimmedCode)) {
+    errors.code = 'Outlet code must be 2–30 characters using letters, numbers, ".", "_", or "-".';
   }
 
   const trimmedName = form.name.trim();
@@ -95,8 +100,8 @@ function validateShopForm(form: RetailShopFormState): RetailShopFieldErrors {
   const trimmedPhone = form.phone.trim();
   if (!trimmedPhone) {
     errors.phone = 'Phone number is required.';
-  } else if (trimmedPhone.length > 30) {
-    errors.phone = 'Phone number must be 30 characters or fewer.';
+  } else if (!STAFF_PHONE_REGEX.test(trimmedPhone)) {
+    errors.phone = 'Phone must be 7 to 15 digits (optional leading +).';
   }
 
   return errors;
@@ -218,7 +223,6 @@ export function RetailShopsSection({
           cityName.toLowerCase().includes(needle)
         );
       })
-      .sort((a, b) => Number(b.active) - Number(a.active))
       .map((item) => ({ ...item }));
   }, [shops, cityFilter, searchQuery, cityNameMap]);
 

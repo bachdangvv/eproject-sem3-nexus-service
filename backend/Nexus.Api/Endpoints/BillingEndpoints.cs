@@ -4,8 +4,10 @@ using Nexus.Domain;
 
 namespace Nexus.Api.Endpoints;
 
+/// <summary>Minimal API endpoints for Billing department invoicing/refunds and Retail in-store payments.</summary>
 public static class BillingEndpoints
 {
+    /// <summary>Maps billing account lookup, invoice creation, payment collection, and deposit refund routes.</summary>
     public static void MapBilling(this RouteGroupBuilder api)
     {
         var billing = api.MapGroup("/billing/accounts")
@@ -15,19 +17,23 @@ public static class BillingEndpoints
             service.ListAsync(q, status, cityCode));
         billing.MapGet("/{accountId}", (string accountId, BillingService service) =>
             service.FindAsync(accountId));
-        billing.MapPost("/{accountId}", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user) =>
+        billing.MapPost("/{accountId}", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user, CancellationToken cancellationToken) =>
         {
-            CreateInvoiceInput? input = http.Request.HasJsonContentType() && http.Request.ContentLength > 0
-                ? await http.Request.ReadFromJsonAsync<CreateInvoiceInput>()
-                : null;
-            return await service.CreateAsync(accountId, input, int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!));
+            var (ok, input, error) = await EndpointHelpers.TryReadOptionalJsonAsync<CreateInvoiceInput>(http, cancellationToken);
+            if (!ok) return error!;
+            return Results.Ok(await service.CreateAsync(accountId, input, EndpointHelpers.ActorId(user)));
         });
-        billing.MapPost("/{accountId}/payment", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user) =>
+        billing.MapPost("/{accountId}/payment", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user, CancellationToken cancellationToken) =>
         {
-            RecordPaymentInput? input = http.Request.HasJsonContentType() && http.Request.ContentLength > 0
-                ? await http.Request.ReadFromJsonAsync<RecordPaymentInput>()
-                : null;
-            return await service.PayAsync(accountId, input, int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!), "CityOffice");
+            var (ok, input, error) = await EndpointHelpers.TryReadOptionalJsonAsync<RecordPaymentInput>(http, cancellationToken);
+            if (!ok) return error!;
+            return Results.Ok(await service.PayAsync(accountId, input, EndpointHelpers.ActorId(user), "CityOffice"));
+        });
+        billing.MapPost("/{accountId}/refund", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+        {
+            var (ok, input, error) = await EndpointHelpers.TryReadOptionalJsonAsync<RefundDepositInput>(http, cancellationToken);
+            if (!ok) return error!;
+            return Results.Ok(await service.RefundDepositAsync(accountId, input, EndpointHelpers.ActorId(user)));
         });
 
         var retailBilling = api.MapGroup("/retail/billing/accounts")
@@ -37,12 +43,11 @@ public static class BillingEndpoints
             service.ListAsync(q, status, cityCode));
         retailBilling.MapGet("/{accountId}", (string accountId, BillingService service) =>
             service.FindAsync(accountId));
-        retailBilling.MapPost("/{accountId}/payment", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user) =>
+        retailBilling.MapPost("/{accountId}/payment", async (string accountId, HttpContext http, BillingService service, ClaimsPrincipal user, CancellationToken cancellationToken) =>
         {
-            RecordPaymentInput? input = http.Request.HasJsonContentType() && http.Request.ContentLength > 0
-                ? await http.Request.ReadFromJsonAsync<RecordPaymentInput>()
-                : null;
-            return await service.PayAsync(accountId, input, int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!), "RetailOutlet");
+            var (ok, input, error) = await EndpointHelpers.TryReadOptionalJsonAsync<RecordPaymentInput>(http, cancellationToken);
+            if (!ok) return error!;
+            return Results.Ok(await service.PayAsync(accountId, input, EndpointHelpers.ActorId(user), "RetailOutlet"));
         });
     }
 }

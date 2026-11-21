@@ -1,3 +1,6 @@
+/**
+ * Admin and Billing vendor payment settlement ledger section (GET/POST /api/admin/vendor-payments).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -220,10 +223,9 @@ export function VendorPaymentsSection({
   );
 
   const openRecordDialog = () => {
-    const eligiblePos = purchases.filter(
-      (po) => po.status !== 'Cancelled' && po.paidAmount < po.totalAmount,
-    );
-    const initialPo = eligiblePos.length > 0 ? eligiblePos[0]! : purchases[0];
+    const nonCancelledPos = purchases.filter((po) => po.status !== 'Cancelled');
+    const eligiblePos = nonCancelledPos.filter((po) => po.paidAmount < po.totalAmount);
+    const initialPo = eligiblePos.length > 0 ? eligiblePos[0]! : nonCancelledPos[0];
     const initialPoId = initialPo ? initialPo.id : 0;
     const initialBalance = initialPo ? Math.max(0, initialPo.totalAmount - initialPo.paidAmount) : 0;
 

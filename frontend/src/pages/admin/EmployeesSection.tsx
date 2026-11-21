@@ -1,15 +1,20 @@
+/**
+ * Admin staff accounts roster and provisioning section (GET/POST/PUT/DELETE /api/employees).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
 import { Code } from '@astryxdesign/core/Code';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
 import { Grid } from '@astryxdesign/core/Grid';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
+import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
@@ -18,11 +23,16 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { useToast } from '@astryxdesign/core/Toast';
 import { Token, type TokenColor } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
-import { ApiErrorBanner } from '../../components/StatusViews';
+import { ApiErrorBanner, StatusLabel } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
-import { createEmployee, getEmployees } from '../../services/staffApi';
-import type { EmployeeView, UserRole } from '../../types/nexus';
+import {
+  createEmployee,
+  deactivateEmployee,
+  getEmployees,
+  updateEmployee,
+} from '../../services/staffApi';
+import type { EmployeeView, StaffRole, UserRole } from '../../types/nexus';
 import {
   extractErrorMessage,
   extractFieldErrors,
@@ -37,6 +47,7 @@ const ROLE_TOKEN_COLOR: Record<UserRole, TokenColor> = {
   Retail: 'blue',
   Technical: 'teal',
   Billing: 'green',
+  Customer: 'orange',
 };
 
 function RoleToken({ role }: { role: UserRole }): JSX.Element {
@@ -55,7 +66,7 @@ export function EmployeesSection({
 
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<UserRole>('Retail');
+  const [role, setRole] = useState<StaffRole>('Retail');
   const [password, setPassword] = useState('');
 
   const [usernameTouched, setUsernameTouched] = useState(false);
@@ -70,6 +81,14 @@ export function EmployeesSection({
   }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeView | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('Retail');
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [togglingEmployeeId, setTogglingEmployeeId] = useState<number | null>(null);
 
   const hasLoadedOnceRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -266,24 +285,140 @@ export function EmployeesSection({
     }
   };
 
+  const handleEditEmployeeSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingEmployee || savingEdit) return;
+    const nextDisplayName = editDisplayName.trim();
+    if (!nextDisplayName || nextDisplayName.length > 100) {
+      setEditError('Display name is required (1–100 characters).');
+      return;
+    }
+    if (editPassword.length > 0 && (editPassword.length < 12 || editPassword.length > 128)) {
+      setEditError('New password must be 12–128 characters, or left empty to keep current.');
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    const isCustomerAccount = editingEmployee.role === 'Customer';
+    try {
+      const updated = await updateEmployee(editingEmployee.id, {
+        displayName: nextDisplayName,
+        role: isCustomerAccount ? 'Customer' : editRole,
+        password: editPassword.length > 0 ? editPassword : null,
+        retailShopId: isCustomerAccount ? null : undefined,
+      });
+      if (!isMountedRef.current) return;
+      setEditingEmployee(null);
+      toast({ body: `Updated account "${updated.username}" (${updated.role}).` });
+      pagination.focusItem((item) => item.id === updated.id);
+      await loadEmployees(true);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setEditError(extractErrorMessage(err, 'Could not update staff account.'));
+    } finally {
+      if (isMountedRef.current) {
+        setSavingEdit(false);
+      }
+    }
+  };
+
+  const handleToggleEmployeeActive = async (emp: EmployeeRow) => {
+    if (togglingEmployeeId !== null) return;
+    setTogglingEmployeeId(emp.id);
+    setLoadError(null);
+    const isCurrentlyActive = emp.active !== false;
+    try {
+      const updated = isCurrentlyActive
+        ? await deactivateEmployee(emp.id)
+        : await updateEmployee(emp.id, {
+            displayName: emp.displayName,
+            role: emp.role,
+            active: true,
+            retailShopId: emp.retailShopId ?? null,
+          });
+      if (!isMountedRef.current) return;
+      toast({
+        body: isCurrentlyActive
+          ? `Deactivated staff account "${updated.username}".`
+          : `Reactivated staff account "${updated.username}".`,
+      });
+      await loadEmployees(true);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setLoadError(
+        extractErrorMessage(
+          err,
+          isCurrentlyActive
+            ? `Could not deactivate staff account "${emp.username}".`
+            : `Could not reactivate staff account "${emp.username}".`,
+        ),
+      );
+    } finally {
+      if (isMountedRef.current) {
+        setTogglingEmployeeId(null);
+      }
+    }
+  };
+
   const columns: TableColumn<EmployeeRow>[] = [
     {
       key: 'username',
       header: 'Username',
-      width: proportional(1, { minWidth: 130 }),
+      width: proportional(1, { minWidth: 120 }),
       renderCell: (row) => <Code>{row.username}</Code>,
     },
     {
       key: 'displayName',
       header: 'Display Name',
-      width: proportional(1.5, { minWidth: 150 }),
+      width: proportional(1.4, { minWidth: 140 }),
       renderCell: (row) => <Text weight="semibold">{row.displayName}</Text>,
     },
     {
       key: 'role',
       header: 'Role',
-      width: pixel(120),
+      width: pixel(110),
       renderCell: (row) => <RoleToken role={row.role} />,
+    },
+    {
+      key: 'active',
+      header: 'Status',
+      width: pixel(115),
+      renderCell: (row) => (
+        <StatusLabel
+          variant={row.active !== false ? 'success' : 'neutral'}
+          label={row.active !== false ? 'Active' : 'Inactive'}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      width: pixel(190),
+      align: 'end',
+      renderCell: (row) => (
+        <HStack gap={2} hAlign="end" wrap="nowrap">
+          <Button
+            size="sm"
+            variant="secondary"
+            label="Edit"
+            onClick={() => {
+              setEditingEmployee(row);
+              setEditDisplayName(row.displayName);
+              setEditRole(row.role);
+              setEditPassword('');
+              setEditError(null);
+            }}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            label={row.active !== false ? 'Deactivate' : 'Reactivate'}
+            isLoading={togglingEmployeeId === row.id}
+            isDisabled={togglingEmployeeId !== null}
+            onClick={() => void handleToggleEmployeeActive(row)}
+          />
+        </HStack>
+      ),
     },
   ];
 
@@ -340,7 +475,7 @@ export function EmployeesSection({
                 options={STAFF_ROLE_OPTIONS}
                 value={role}
                 onChange={(value) => {
-                  setRole(value as UserRole);
+                  setRole(value as StaffRole);
                   setServerFieldErrors((prev) => ({ ...prev, role: undefined }));
                 }}
                 status={
@@ -434,6 +569,103 @@ export function EmployeesSection({
           )}
         </VStack>
       </Card>
+
+      <Dialog
+        isOpen={editingEmployee !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) setEditingEmployee(null);
+        }}
+        purpose="form"
+        width={480}
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={editingEmployee ? `Edit Account: ${editingEmployee.username}` : 'Edit Account'}
+              subtitle={
+                editingEmployee?.role === 'Customer'
+                  ? 'Update display name or reset password for this customer portal login.'
+                  : 'Update display name, department role, or reset password.'
+              }
+              onOpenChange={(open) => {
+                if (!open && !savingEdit) setEditingEmployee(null);
+              }}
+            />
+          }
+          content={
+            <LayoutContent>
+              <VStack gap={4}>
+                <ApiErrorBanner
+                  title="Could not update employee"
+                  error={editError}
+                  onDismiss={() => setEditError(null)}
+                />
+                <form id="edit-employee-form" onSubmit={(e) => void handleEditEmployeeSubmit(e)}>
+                  <FormLayout>
+                    <TextInput
+                      label="Display Name"
+                      isRequired
+                      value={editDisplayName}
+                      onChange={setEditDisplayName}
+                    />
+                    {editingEmployee?.role === 'Customer' ? (
+                      <VStack gap={1}>
+                        <Text type="supporting" weight="medium">
+                          Account Role
+                        </Text>
+                        <HStack gap={2} vAlign="center" wrap="wrap">
+                          <RoleToken role="Customer" />
+                          <Text type="supporting">
+                            Customer portal role is immutable and cannot be assigned a retail shop.
+                          </Text>
+                        </HStack>
+                      </VStack>
+                    ) : (
+                      <Selector
+                        label="Department Role"
+                        isRequired
+                        options={STAFF_ROLE_OPTIONS}
+                        value={editRole}
+                        onChange={(value) => setEditRole(value as UserRole)}
+                      />
+                    )}
+                    <TextInput
+                      type="password"
+                      label="Reset Password"
+                      placeholder="Leave empty to keep current password"
+                      description="If provided, must be 12–128 characters."
+                      isOptional
+                      autoComplete="new-password"
+                      value={editPassword}
+                      onChange={setEditPassword}
+                    />
+                  </FormLayout>
+                </form>
+              </VStack>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack hAlign="end" gap={2}>
+                <Button
+                  variant="ghost"
+                  label="Cancel"
+                  isDisabled={savingEdit}
+                  onClick={() => setEditingEmployee(null)}
+                />
+                <Button
+                  type="submit"
+                  form="edit-employee-form"
+                  variant="primary"
+                  label="Save Changes"
+                  isLoading={savingEdit}
+                  isDisabled={savingEdit || !editDisplayName.trim()}
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
     </Grid>
   );
 }

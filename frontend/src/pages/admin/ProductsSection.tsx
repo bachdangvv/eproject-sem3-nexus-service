@@ -1,3 +1,6 @@
+/**
+ * Admin hardware and equipment products catalog section (GET/POST/PUT/DELETE /api/products).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -30,7 +33,10 @@ import {
   getProducts,
   updateProduct,
 } from '../../services/catalogApi';
-import { getTechnicalEquipment } from '../../services/inventoryApi';
+import {
+  getTechnicalEquipment,
+  getTechnicalEquipmentSummary,
+} from '../../services/inventoryApi';
 import type { EquipmentStockView, ProductInput, ProductView } from '../../types/nexus';
 import {
   extractErrorMessage,
@@ -106,6 +112,7 @@ export function ProductsSection({
   const toast = useToast();
   const [products, setProducts] = useState<ProductView[]>([]);
   const [equipmentStats, setEquipmentStats] = useState<Record<number, EquipmentStockView>>({});
+  const [globalPendingFeasibleOrders, setGlobalPendingFeasibleOrders] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -148,9 +155,10 @@ export function ProductsSection({
       }
       setLoadError(null);
       try {
-        const [productData, eqData] = await Promise.all([
+        const [productData, eqData, summaryData] = await Promise.all([
           getProducts(),
           getTechnicalEquipment().catch(() => [] as EquipmentStockView[]),
+          getTechnicalEquipmentSummary().catch(() => ({ pendingFeasibleOrders: 0 })),
         ]);
         if (!isMountedRef.current || seq !== requestSeqRef.current) return;
         setProducts(productData);
@@ -159,6 +167,7 @@ export function ProductsSection({
           statsMap[item.id] = item;
         }
         setEquipmentStats(statsMap);
+        setGlobalPendingFeasibleOrders(summaryData.pendingFeasibleOrders ?? 0);
         onCountChange(productData.length);
       } catch (err) {
         if (!isMountedRef.current || seq !== requestSeqRef.current) return;
@@ -189,7 +198,6 @@ export function ProductsSection({
           item.description.toLowerCase().includes(needle)
         );
       })
-      .sort((a, b) => Number(b.active) - Number(a.active))
       .map((item) => ({ ...item }));
   }, [products, searchQuery]);
 
@@ -207,10 +215,7 @@ export function ProductsSection({
     [products],
   );
 
-  const totalPendingAllocations = useMemo(
-    () => Object.values(equipmentStats).reduce((sum, s) => sum + (s.pendingAllocations || 0), 0),
-    [equipmentStats],
-  );
+  const totalPendingAllocations = globalPendingFeasibleOrders;
 
   const openCreateDialog = () => {
     setCreateForm(DEFAULT_PRODUCT_FORM);

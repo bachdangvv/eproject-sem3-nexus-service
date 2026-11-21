@@ -1,3 +1,6 @@
+/**
+ * Admin service tariff plan catalog management section supporting Dial-Up, Broadband, and Landline plans.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -28,6 +31,11 @@ import {
   StatusLabel,
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
+import {
+  formatPlanCycleLabel,
+  formatPlanPriceWithCycle,
+  VALIDITY_MONTH_OPTIONS,
+} from '../../data/tariffs';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { archivePlan, createPlan, getPlans, updatePlan } from '../../services/catalogApi';
 import type { PlanInput, PlanView, ServiceTypeCode } from '../../types/nexus';
@@ -45,7 +53,13 @@ type TypeFilter = 'ALL' | ServiceTypeCode;
 interface PlanFormState {
   name: string;
   type: ServiceTypeCode;
+  validityMonths: string;
   priceText: string;
+  hoursAllowanceText: string;
+  speedKbpsText: string;
+  localCallRateText: string;
+  stdCallRateText: string;
+  mobileMsgRateText: string;
   description: string;
   active: boolean;
 }
@@ -53,21 +67,70 @@ interface PlanFormState {
 interface PlanFieldErrors {
   name?: string;
   type?: string;
+  validityMonths?: string;
   price?: string;
+  hoursAllowance?: string;
+  speedKbps?: string;
+  localCallRate?: string;
+  stdCallRate?: string;
+  mobileMsgRate?: string;
   description?: string;
 }
 
 const DEFAULT_CREATE_FORM: PlanFormState = {
   name: '',
   type: 'B',
+  validityMonths: '1',
   priceText: '',
+  hoursAllowanceText: '',
+  speedKbpsText: '',
+  localCallRateText: '0',
+  stdCallRateText: '0',
+  mobileMsgRateText: '0',
   description: '',
   active: true,
 };
 
+function parseOptionalPositiveInt(
+  raw: string,
+  min: number,
+  max: number,
+  label: string,
+): { valid: true; value: number | null } | { valid: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { valid: true, value: null };
+  if (!/^\d+$/.test(trimmed)) {
+    return { valid: false, message: `${label} must be a whole number.` };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    return {
+      valid: false,
+      message: `${label} must be between ${min} and ${max.toLocaleString()}.`,
+    };
+  }
+  return { valid: true, value: parsed };
+}
+
+function parseCallRateField(raw: string, label: string): { valid: true; value: number } | { valid: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { valid: true, value: 0 };
+  const check = validatePlanPrice(trimmed);
+  if (!check.valid) {
+    return { valid: false, message: `Enter a valid ${label} ($0.00 or greater, up to 2 decimals).` };
+  }
+  return check;
+}
+
 function validatePlanForm(form: PlanFormState): {
   errors: PlanFieldErrors;
   parsedPrice: number | null;
+  parsedValidityMonths: number;
+  parsedHoursAllowance: number | null;
+  parsedSpeedKbps: number | null;
+  parsedLocalRate: number;
+  parsedStdRate: number;
+  parsedMobileRate: number;
 } {
   const errors: PlanFieldErrors = {};
   const trimmedName = form.name.trim();
@@ -81,9 +144,56 @@ function validatePlanForm(form: PlanFormState): {
     errors.type = 'Select Dial-Up (D), Broadband (B), or Landline (T).';
   }
 
+  const parsedValidityMonths = Number(form.validityMonths);
+  if (
+    parsedValidityMonths !== 1 &&
+    parsedValidityMonths !== 3 &&
+    parsedValidityMonths !== 6 &&
+    parsedValidityMonths !== 12
+  ) {
+    errors.validityMonths = 'Select 1, 3, 6, or 12 months.';
+  }
+
   const priceCheck = validatePlanPrice(form.priceText);
   if (!priceCheck.valid) {
     errors.price = priceCheck.message;
+  }
+
+  const hoursCheck = parseOptionalPositiveInt(
+    form.hoursAllowanceText,
+    1,
+    100000,
+    'Hours allowance',
+  );
+  if (!hoursCheck.valid) {
+    errors.hoursAllowance = hoursCheck.message;
+  }
+
+  const speedCheck = parseOptionalPositiveInt(
+    form.speedKbpsText,
+    1,
+    10000000,
+    'Speed (Kbps)',
+  );
+  if (!speedCheck.valid) {
+    errors.speedKbps = speedCheck.message;
+  }
+
+  let parsedLocalRate = 0;
+  let parsedStdRate = 0;
+  let parsedMobileRate = 0;
+  if (form.type === 'T') {
+    const localCheck = parseCallRateField(form.localCallRateText, 'local call rate');
+    if (!localCheck.valid) errors.localCallRate = localCheck.message;
+    else parsedLocalRate = localCheck.value;
+
+    const stdCheck = parseCallRateField(form.stdCallRateText, 'STD call rate');
+    if (!stdCheck.valid) errors.stdCallRate = stdCheck.message;
+    else parsedStdRate = stdCheck.value;
+
+    const mobileCheck = parseCallRateField(form.mobileMsgRateText, 'mobile messaging rate');
+    if (!mobileCheck.valid) errors.mobileMsgRate = mobileCheck.message;
+    else parsedMobileRate = mobileCheck.value;
   }
 
   const trimmedDescription = form.description.trim();
@@ -94,6 +204,12 @@ function validatePlanForm(form: PlanFormState): {
   return {
     errors,
     parsedPrice: priceCheck.valid ? priceCheck.value : null,
+    parsedValidityMonths: Number.isInteger(parsedValidityMonths) ? parsedValidityMonths : 1,
+    parsedHoursAllowance: hoursCheck.valid ? hoursCheck.value : null,
+    parsedSpeedKbps: speedCheck.valid ? speedCheck.value : null,
+    parsedLocalRate,
+    parsedStdRate,
+    parsedMobileRate,
   };
 }
 
@@ -181,7 +297,6 @@ export function PlansSection({
           plan.description.toLowerCase().includes(needle)
         );
       })
-      .sort((a, b) => Number(b.active) - Number(a.active))
       .map((plan) => ({ ...plan }));
   }, [plans, searchQuery, typeFilter]);
 
@@ -201,7 +316,13 @@ export function PlansSection({
     setEditForm({
       name: plan.name,
       type: plan.type,
+      validityMonths: String(plan.validityMonths ?? 1),
       priceText: String(plan.price),
+      hoursAllowanceText: plan.hoursAllowance != null ? String(plan.hoursAllowance) : '',
+      speedKbpsText: plan.speedKbps != null ? String(plan.speedKbps) : '',
+      localCallRateText: String(plan.localCallRate ?? 0),
+      stdCallRateText: String(plan.stdCallRate ?? 0),
+      mobileMsgRateText: String(plan.mobileMsgRate ?? 0),
       description: plan.description ?? '',
       active: plan.active,
     });
@@ -212,7 +333,16 @@ export function PlansSection({
   const handleCreateSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (creating) return;
-    const { errors, parsedPrice } = validatePlanForm(createForm);
+    const {
+      errors,
+      parsedPrice,
+      parsedValidityMonths,
+      parsedHoursAllowance,
+      parsedSpeedKbps,
+      parsedLocalRate,
+      parsedStdRate,
+      parsedMobileRate,
+    } = validatePlanForm(createForm);
     setCreateFieldErrors(errors);
     setCreateError(null);
     if (Object.keys(errors).length > 0 || parsedPrice === null) {
@@ -225,6 +355,12 @@ export function PlansSection({
       description: createForm.description.trim() || null,
       price: parsedPrice,
       active: createForm.active,
+      localCallRate: parsedLocalRate,
+      stdCallRate: parsedStdRate,
+      mobileMsgRate: parsedMobileRate,
+      validityMonths: parsedValidityMonths,
+      hoursAllowance: parsedHoursAllowance,
+      speedKbps: parsedSpeedKbps,
     };
 
     setCreating(true);
@@ -242,7 +378,13 @@ export function PlansSection({
         ...prev,
         name: serverFields.name ?? prev.name,
         type: serverFields.type ?? prev.type,
+        validityMonths: serverFields.validitymonths ?? prev.validityMonths,
         price: serverFields.price ?? prev.price,
+        hoursAllowance: serverFields.hoursallowance ?? prev.hoursAllowance,
+        speedKbps: serverFields.speedkbps ?? prev.speedKbps,
+        localCallRate: serverFields.localcallrate ?? prev.localCallRate,
+        stdCallRate: serverFields.stdcallrate ?? prev.stdCallRate,
+        mobileMsgRate: serverFields.mobilemsgrate ?? prev.mobileMsgRate,
         description: serverFields.description ?? prev.description,
       }));
       setCreateError(extractErrorMessage(err, 'Could not create service plan.'));
@@ -257,7 +399,16 @@ export function PlansSection({
     e.preventDefault();
     if (savingEdit || !editingPlan) return;
 
-    const { errors, parsedPrice } = validatePlanForm(editForm);
+    const {
+      errors,
+      parsedPrice,
+      parsedValidityMonths,
+      parsedHoursAllowance,
+      parsedSpeedKbps,
+      parsedLocalRate,
+      parsedStdRate,
+      parsedMobileRate,
+    } = validatePlanForm(editForm);
     setEditFieldErrors(errors);
     setEditError(null);
     if (Object.keys(errors).length > 0 || parsedPrice === null) {
@@ -270,6 +421,12 @@ export function PlansSection({
       description: editForm.description.trim() || null,
       price: parsedPrice,
       active: editForm.active,
+      localCallRate: parsedLocalRate,
+      stdCallRate: parsedStdRate,
+      mobileMsgRate: parsedMobileRate,
+      validityMonths: parsedValidityMonths,
+      hoursAllowance: parsedHoursAllowance,
+      speedKbps: parsedSpeedKbps,
     };
 
     setSavingEdit(true);
@@ -287,7 +444,13 @@ export function PlansSection({
         ...prev,
         name: serverFields.name ?? prev.name,
         type: serverFields.type ?? prev.type,
+        validityMonths: serverFields.validitymonths ?? prev.validityMonths,
         price: serverFields.price ?? prev.price,
+        hoursAllowance: serverFields.hoursallowance ?? prev.hoursAllowance,
+        speedKbps: serverFields.speedkbps ?? prev.speedKbps,
+        localCallRate: serverFields.localcallrate ?? prev.localCallRate,
+        stdCallRate: serverFields.stdcallrate ?? prev.stdCallRate,
+        mobileMsgRate: serverFields.mobilemsgrate ?? prev.mobileMsgRate,
         description: serverFields.description ?? prev.description,
       }));
       setEditError(extractErrorMessage(err, 'Could not update service plan.'));
@@ -309,6 +472,12 @@ export function PlansSection({
         description: plan.description || null,
         price: plan.price,
         active: nextActive,
+        localCallRate: plan.localCallRate ?? 0,
+        stdCallRate: plan.stdCallRate ?? 0,
+        mobileMsgRate: plan.mobileMsgRate ?? 0,
+        validityMonths: plan.validityMonths ?? 1,
+        hoursAllowance: plan.hoursAllowance ?? null,
+        speedKbps: plan.speedKbps ?? null,
       });
       if (!isMountedRef.current) return;
       toast({
@@ -374,11 +543,47 @@ export function PlansSection({
       ),
     },
     {
+      key: 'validityMonths',
+      header: 'Cycle',
+      width: pixel(140),
+      renderCell: (row) => (
+        <Text type="supporting">{formatPlanCycleLabel(row.validityMonths)}</Text>
+      ),
+    },
+    {
       key: 'price',
-      header: 'Monthly Price',
-      width: pixel(130),
+      header: 'Cycle Price',
+      width: pixel(135),
       align: 'end',
-      renderCell: (row) => <Text weight="semibold">{`${formatUsd(row.price)}/mo`}</Text>,
+      renderCell: (row) => (
+        <Text weight="semibold" hasTabularNumbers>
+          {formatPlanPriceWithCycle(row.price, row.validityMonths)}
+        </Text>
+      ),
+    },
+    {
+      key: 'specs',
+      header: 'Specs',
+      width: pixel(130),
+      renderCell: (row) => {
+        const parts: string[] = [];
+        if (row.hoursAllowance != null) parts.push(`${row.hoursAllowance} hrs`);
+        if (row.speedKbps != null) parts.push(`${row.speedKbps} Kbps`);
+        return <Text type="supporting">{parts.length > 0 ? parts.join(' · ') : '—'}</Text>;
+      },
+    },
+    {
+      key: 'callRates',
+      header: 'Call Tariffs ($/min)',
+      width: pixel(210),
+      renderCell: (row) =>
+        row.type === 'T' ? (
+          <Text type="supporting">
+            {`Local ${formatUsd(row.localCallRate ?? 0)} · STD ${formatUsd(row.stdCallRate ?? 0)} · Msg ${formatUsd(row.mobileMsgRate ?? 0)}`}
+          </Text>
+        ) : (
+          <Text type="supporting">—</Text>
+        ),
     },
     {
       key: 'active',
@@ -594,8 +799,23 @@ export function PlansSection({
                           : undefined
                       }
                     />
+                    <Selector
+                      label="Billing Cycle (Validity)"
+                      isRequired
+                      options={VALIDITY_MONTH_OPTIONS}
+                      value={createForm.validityMonths}
+                      onChange={(value) => {
+                        setCreateForm((prev) => ({ ...prev, validityMonths: value }));
+                        setCreateFieldErrors((prev) => ({ ...prev, validityMonths: undefined }));
+                      }}
+                      status={
+                        createFieldErrors.validityMonths
+                          ? { type: 'error', message: createFieldErrors.validityMonths }
+                          : undefined
+                      }
+                    />
                     <TextInput
-                      label="Monthly Price (USD)"
+                      label="Cycle Price (USD)"
                       placeholder="e.g. 49.99"
                       inputMode="decimal"
                       description="Amount of $0.00 or greater with up to 2 decimal places."
@@ -611,6 +831,92 @@ export function PlansSection({
                           : undefined
                       }
                     />
+                    <TextInput
+                      label="Hours Allowance"
+                      placeholder="e.g. 30"
+                      inputMode="numeric"
+                      isOptional
+                      description="Optional included connection hours (1–100,000)."
+                      value={createForm.hoursAllowanceText}
+                      onChange={(value) => {
+                        setCreateForm((prev) => ({ ...prev, hoursAllowanceText: value }));
+                        setCreateFieldErrors((prev) => ({ ...prev, hoursAllowance: undefined }));
+                      }}
+                      status={
+                        createFieldErrors.hoursAllowance
+                          ? { type: 'error', message: createFieldErrors.hoursAllowance }
+                          : undefined
+                      }
+                    />
+                    <TextInput
+                      label="Speed (Kbps)"
+                      placeholder="e.g. 64"
+                      inputMode="numeric"
+                      isOptional
+                      description="Optional bandwidth speed in Kbps (1–10,000,000)."
+                      value={createForm.speedKbpsText}
+                      onChange={(value) => {
+                        setCreateForm((prev) => ({ ...prev, speedKbpsText: value }));
+                        setCreateFieldErrors((prev) => ({ ...prev, speedKbps: undefined }));
+                      }}
+                      status={
+                        createFieldErrors.speedKbps
+                          ? { type: 'error', message: createFieldErrors.speedKbps }
+                          : undefined
+                      }
+                    />
+                    {createForm.type === 'T' && (
+                      <>
+                        <TextInput
+                          label="Local Call Rate (USD / minute)"
+                          placeholder="e.g. 0.75"
+                          inputMode="decimal"
+                          isOptional
+                          value={createForm.localCallRateText}
+                          onChange={(value) => {
+                            setCreateForm((prev) => ({ ...prev, localCallRateText: value }));
+                            setCreateFieldErrors((prev) => ({ ...prev, localCallRate: undefined }));
+                          }}
+                          status={
+                            createFieldErrors.localCallRate
+                              ? { type: 'error', message: createFieldErrors.localCallRate }
+                              : undefined
+                          }
+                        />
+                        <TextInput
+                          label="STD Call Rate (USD / minute)"
+                          placeholder="e.g. 2.25"
+                          inputMode="decimal"
+                          isOptional
+                          value={createForm.stdCallRateText}
+                          onChange={(value) => {
+                            setCreateForm((prev) => ({ ...prev, stdCallRateText: value }));
+                            setCreateFieldErrors((prev) => ({ ...prev, stdCallRate: undefined }));
+                          }}
+                          status={
+                            createFieldErrors.stdCallRate
+                              ? { type: 'error', message: createFieldErrors.stdCallRate }
+                              : undefined
+                          }
+                        />
+                        <TextInput
+                          label="Mobile Messaging Rate (USD / minute)"
+                          placeholder="e.g. 1.00"
+                          inputMode="decimal"
+                          isOptional
+                          value={createForm.mobileMsgRateText}
+                          onChange={(value) => {
+                            setCreateForm((prev) => ({ ...prev, mobileMsgRateText: value }));
+                            setCreateFieldErrors((prev) => ({ ...prev, mobileMsgRate: undefined }));
+                          }}
+                          status={
+                            createFieldErrors.mobileMsgRate
+                              ? { type: 'error', message: createFieldErrors.mobileMsgRate }
+                              : undefined
+                          }
+                        />
+                      </>
+                    )}
                     <TextArea
                       label="Description"
                       placeholder="Bandwidth, included hours, or call tariff summary..."
@@ -734,8 +1040,23 @@ export function PlansSection({
                           : undefined
                       }
                     />
+                    <Selector
+                      label="Billing Cycle (Validity)"
+                      isRequired
+                      options={VALIDITY_MONTH_OPTIONS}
+                      value={editForm.validityMonths}
+                      onChange={(value) => {
+                        setEditForm((prev) => ({ ...prev, validityMonths: value }));
+                        setEditFieldErrors((prev) => ({ ...prev, validityMonths: undefined }));
+                      }}
+                      status={
+                        editFieldErrors.validityMonths
+                          ? { type: 'error', message: editFieldErrors.validityMonths }
+                          : undefined
+                      }
+                    />
                     <TextInput
-                      label="Monthly Price (USD)"
+                      label="Cycle Price (USD)"
                       inputMode="decimal"
                       description="Amount of $0.00 or greater with up to 2 decimal places."
                       isRequired
@@ -750,6 +1071,89 @@ export function PlansSection({
                           : undefined
                       }
                     />
+                    <TextInput
+                      label="Hours Allowance"
+                      placeholder="e.g. 30"
+                      inputMode="numeric"
+                      isOptional
+                      description="Optional included connection hours (1–100,000)."
+                      value={editForm.hoursAllowanceText}
+                      onChange={(value) => {
+                        setEditForm((prev) => ({ ...prev, hoursAllowanceText: value }));
+                        setEditFieldErrors((prev) => ({ ...prev, hoursAllowance: undefined }));
+                      }}
+                      status={
+                        editFieldErrors.hoursAllowance
+                          ? { type: 'error', message: editFieldErrors.hoursAllowance }
+                          : undefined
+                      }
+                    />
+                    <TextInput
+                      label="Speed (Kbps)"
+                      placeholder="e.g. 64"
+                      inputMode="numeric"
+                      isOptional
+                      description="Optional bandwidth speed in Kbps (1–10,000,000)."
+                      value={editForm.speedKbpsText}
+                      onChange={(value) => {
+                        setEditForm((prev) => ({ ...prev, speedKbpsText: value }));
+                        setEditFieldErrors((prev) => ({ ...prev, speedKbps: undefined }));
+                      }}
+                      status={
+                        editFieldErrors.speedKbps
+                          ? { type: 'error', message: editFieldErrors.speedKbps }
+                          : undefined
+                      }
+                    />
+                    {editForm.type === 'T' && (
+                      <>
+                        <TextInput
+                          label="Local Call Rate (USD / minute)"
+                          inputMode="decimal"
+                          isOptional
+                          value={editForm.localCallRateText}
+                          onChange={(value) => {
+                            setEditForm((prev) => ({ ...prev, localCallRateText: value }));
+                            setEditFieldErrors((prev) => ({ ...prev, localCallRate: undefined }));
+                          }}
+                          status={
+                            editFieldErrors.localCallRate
+                              ? { type: 'error', message: editFieldErrors.localCallRate }
+                              : undefined
+                          }
+                        />
+                        <TextInput
+                          label="STD Call Rate (USD / minute)"
+                          inputMode="decimal"
+                          isOptional
+                          value={editForm.stdCallRateText}
+                          onChange={(value) => {
+                            setEditForm((prev) => ({ ...prev, stdCallRateText: value }));
+                            setEditFieldErrors((prev) => ({ ...prev, stdCallRate: undefined }));
+                          }}
+                          status={
+                            editFieldErrors.stdCallRate
+                              ? { type: 'error', message: editFieldErrors.stdCallRate }
+                              : undefined
+                          }
+                        />
+                        <TextInput
+                          label="Mobile Messaging Rate (USD / minute)"
+                          inputMode="decimal"
+                          isOptional
+                          value={editForm.mobileMsgRateText}
+                          onChange={(value) => {
+                            setEditForm((prev) => ({ ...prev, mobileMsgRateText: value }));
+                            setEditFieldErrors((prev) => ({ ...prev, mobileMsgRate: undefined }));
+                          }}
+                          status={
+                            editFieldErrors.mobileMsgRate
+                              ? { type: 'error', message: editFieldErrors.mobileMsgRate }
+                              : undefined
+                          }
+                        />
+                      </>
+                    )}
                     <TextArea
                       label="Description"
                       isOptional

@@ -1,3 +1,6 @@
+/**
+ * Billing account lookup, invoice generation, and payment settlement workspace section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -31,15 +34,18 @@ import {
   createBillingRecord,
   getBillingAccount,
   recordPayment,
+  refundDeposit,
 } from '../../services/billingApi';
 import {
   ApiError,
   type BillingView,
   type CreateInvoiceInput,
   type RecordPaymentInput,
+  type RefundDepositInput,
 } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
+  computeCollectedAmount,
   formatBillingError,
   formatCityLabel,
   isValidAccountId,
@@ -69,6 +75,7 @@ export function BillingAccountsSection({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [creatingBill, setCreatingBill] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [refundingDeposit, setRefundingDeposit] = useState(false);
 
   const activeRecord = useMemo<BillingView | null>(
     () =>
@@ -88,6 +95,7 @@ export function BillingAccountsSection({
   const drawerSeqRef = useRef(0);
   const generatingBillRef = useRef(false);
   const processingPaymentRef = useRef(false);
+  const refundingDepositRef = useRef(false);
   const lastHandledRefreshTriggerRef = useRef(refreshTrigger);
   const targetAccountId = activeRecord?.accountId ?? selectedAccountId;
   const targetAccountIdRef = useRef<string | null>(targetAccountId);
@@ -224,9 +232,17 @@ export function BillingAccountsSection({
 
   const handleRecordPayment = async (targetId: string, input?: RecordPaymentInput) => {
     const normalized = normalizeAccountId(targetId);
-    if (!normalized || processingPaymentRef.current || generatingBillRef.current) {
+    if (
+      !normalized ||
+      processingPaymentRef.current ||
+      generatingBillRef.current ||
+      refundingDepositRef.current
+    ) {
       return;
     }
+    const prevRecord =
+      records.find((r) => r.accountId === normalized) ??
+      (drawerRecord?.accountId === normalized ? drawerRecord : null);
     processingPaymentRef.current = true;
     setRecordingPayment(true);
     setActionError(null);
@@ -240,8 +256,13 @@ export function BillingAccountsSection({
       setDrawerRecord((prev) =>
         prev && prev.accountId === updated.accountId ? updated : prev,
       );
+      const collectedAmount = computeCollectedAmount(prevRecord, updated, input?.amount);
       toast({
-        body: `Recorded payment of ${formatUsd(input?.amount ?? updated.amount)} for ${updated.accountId}.`,
+        body: `Recorded payment of ${formatUsd(collectedAmount)} for ${updated.accountId}${
+          updated.status === 'PartiallyPaid'
+            ? ` (${formatUsd(updated.dueAmount ?? 0)} remaining)`
+            : ''
+        }.`,
       });
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -261,6 +282,54 @@ export function BillingAccountsSection({
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
         setRecordingPayment(false);
+      }
+    }
+  };
+
+  const handleRefundDeposit = async (targetId: string, input?: RefundDepositInput) => {
+    const normalized = normalizeAccountId(targetId);
+    if (
+      !normalized ||
+      refundingDepositRef.current ||
+      generatingBillRef.current ||
+      processingPaymentRef.current
+    ) {
+      return;
+    }
+    refundingDepositRef.current = true;
+    setRefundingDeposit(true);
+    setActionError(null);
+    setDrawerError(null);
+
+    try {
+      const updated = await refundDeposit(normalized, input);
+      if (!isMountedRef.current) return;
+      onRecordUpsert(updated);
+      onSelectAccount(updated.accountId);
+      setDrawerRecord((prev) =>
+        prev && prev.accountId === updated.accountId ? updated : prev,
+      );
+      toast({
+        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
+      });
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      const msg = formatBillingError(
+        err,
+        normalized,
+        `Could not disburse security deposit refund for ${normalized}.`,
+      );
+      setActionError(msg);
+      if (drawerOpen) {
+        setDrawerError(msg);
+      }
+      if (err instanceof ApiError && err.status === 409) {
+        void performLookup(normalized, true, true);
+      }
+    } finally {
+      refundingDepositRef.current = false;
+      if (isMountedRef.current) {
+        setRefundingDeposit(false);
       }
     }
   };
@@ -306,7 +375,17 @@ export function BillingAccountsSection({
 
   const parsedMeta = activeRecord ? parseAccountIdMetadata(activeRecord.accountId) : null;
   const activeStep =
-    activeRecord?.status === 'Paid' ? 2 : activeRecord?.status === 'Unpaid' ? 1 : 0;
+    activeRecord?.status === 'Paid'
+      ? 2
+      : activeRecord?.status === 'Unpaid' || activeRecord?.status === 'PartiallyPaid'
+        ? 1
+        : 0;
+  const activeDue = activeRecord
+    ? (activeRecord.dueAmount ?? (activeRecord.status === 'Paid' ? 0 : activeRecord.amount))
+    : 0;
+  const activePaid = activeRecord
+    ? (activeRecord.paidAmount ?? (activeRecord.status === 'Paid' ? activeRecord.amount : 0))
+    : 0;
 
   const recentRows = useMemo<BillingRow[]>(
     () => records.map((rec) => ({ ...rec })),
@@ -516,14 +595,10 @@ export function BillingAccountsSection({
                 <BillingStatusPill status={activeRecord.status} />
               </MetadataListItem>
               <MetadataListItem label="Amount Due">
-                <Text weight="semibold">
-                  {activeRecord.status === 'Paid' ? '$0.00' : formatUsd(activeRecord.amount)}
-                </Text>
+                <Text weight="semibold">{formatUsd(activeDue)}</Text>
               </MetadataListItem>
               <MetadataListItem label="Amount Paid">
-                <Text weight="semibold">
-                  {activeRecord.status === 'Paid' ? formatUsd(activeRecord.amount) : '$0.00'}
-                </Text>
+                <Text weight="semibold">{formatUsd(activePaid)}</Text>
               </MetadataListItem>
               <MetadataListItem label="Territory City">
                 {formatCityLabel(parsedMeta?.cityCode, citiesByCode)}
@@ -558,7 +633,15 @@ export function BillingAccountsSection({
                 container="section"
                 collapsible={false}
                 title="Payment Pending"
-                description="Billing record created. Record full manual payment once funds are received."
+                description={`Billing record created. Record payment once funds are received (${formatUsd(activeDue)} due).`}
+              />
+            ) : activeRecord.status === 'PartiallyPaid' ? (
+              <Banner
+                status="warning"
+                container="section"
+                collapsible={false}
+                title="Partially Paid"
+                description={`Partial payment recorded (${formatUsd(activePaid)} paid). Remaining balance due: ${formatUsd(activeDue)}.`}
               />
             ) : (
               <Banner
@@ -577,16 +660,20 @@ export function BillingAccountsSection({
                     variant="primary"
                     label="Create Billing Record"
                     isLoading={creatingBill}
-                    isDisabled={creatingBill || recordingPayment}
+                    isDisabled={creatingBill || recordingPayment || refundingDeposit}
                     onClick={() => void handleCreateBill(activeRecord.accountId)}
                   />
                 ) : null}
-                {activeRecord.status === 'Unpaid' ? (
+                {activeRecord.status === 'Unpaid' || activeRecord.status === 'PartiallyPaid' ? (
                   <Button
                     variant="primary"
-                    label="Record Full Payment"
+                    label={
+                      activeRecord.status === 'PartiallyPaid'
+                        ? 'Settle Remaining Balance'
+                        : 'Record Full Payment'
+                    }
                     isLoading={recordingPayment}
-                    isDisabled={creatingBill || recordingPayment}
+                    isDisabled={creatingBill || recordingPayment || refundingDeposit}
                     onClick={() => void handleRecordPayment(activeRecord.accountId)}
                   />
                 ) : null}
@@ -658,12 +745,13 @@ export function BillingAccountsSection({
         isOpen={drawerOpen}
         onOpenChange={handleDrawerOpenChange}
         isLoading={drawerLoading}
-        actionLoading={creatingBill || recordingPayment}
+        actionLoading={creatingBill || recordingPayment || refundingDeposit}
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </VStack>
   );

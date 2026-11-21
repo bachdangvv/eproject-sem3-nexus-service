@@ -62,6 +62,8 @@ public sealed record EquipmentStockView(
     int PendingAllocations,
     int AllocatedCount);
 
+public sealed record EquipmentInventorySummaryView(int PendingFeasibleOrders);
+
 public sealed record EquipmentIncidentView(
     int Id,
     long ConnectionId,
@@ -76,6 +78,7 @@ public sealed record EquipmentIncidentView(
     string RecordedByUsername,
     bool Settled);
 
+/// <summary>Application service managing retail outlets, vendors, purchase orders, vendor payments, and equipment stock.</summary>
 public sealed class InventoryService(IInventoryStore store, ICatalogStore catalog, IOperationsStore operations)
 {
     // ==================== Retail Shops ====================
@@ -88,23 +91,31 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
 
     public async Task<RetailShopView> CreateRetailShopAsync(RetailShopInput input)
     {
-        if (!await catalog.CityExistsAsync(input.CityCode))
+        var cityCode = input.CityCode.Trim();
+        var code = input.Code.Trim().ToUpperInvariant();
+        if (!await catalog.CityExistsAsync(cityCode))
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an existing city code.");
 
-        if (await store.RetailShopCodeExistsAsync(input.Code.Trim()))
-            throw new UseCaseException(UseCaseFailure.Conflict, "A retail shop with this code already exists.");
+        const string duplicate = "A retail shop with this code already exists.";
+        if (await store.RetailShopCodeExistsAsync(code))
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
 
         var shop = new RetailShop
         {
-            Code = input.Code.Trim().ToUpperInvariant(),
+            Code = code,
             Name = input.Name.Trim(),
-            CityCode = input.CityCode.Trim(),
+            CityCode = cityCode,
             Address = input.Address.Trim(),
             Phone = input.Phone.Trim(),
             Active = input.Active
         };
         store.Add(shop);
-        await store.SaveChangesAsync();
+        try { await store.SaveChangesAsync(); }
+        catch (StoreWriteException error) when (!error.ConcurrentChange)
+        {
+            if (!await store.RetailShopCodeExistsAsync(code)) throw;
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
+        }
         var reloaded = await store.FindRetailShopAsync(shop.Id) ?? shop;
         return ToShopView(reloaded);
     }
@@ -114,21 +125,28 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
         var shop = await store.FindRetailShopAsync(id)
             ?? throw new UseCaseException(UseCaseFailure.NotFound, "Retail shop not found.");
 
-        if (!await catalog.CityExistsAsync(input.CityCode))
+        var cityCode = input.CityCode.Trim();
+        var code = input.Code.Trim().ToUpperInvariant();
+        if (!await catalog.CityExistsAsync(cityCode))
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Select an existing city code.");
 
-        var code = input.Code.Trim().ToUpperInvariant();
+        const string duplicate = "A retail shop with this code already exists.";
         if (await store.RetailShopCodeExistsAsync(code, id))
-            throw new UseCaseException(UseCaseFailure.Conflict, "A retail shop with this code already exists.");
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
 
         shop.Code = code;
         shop.Name = input.Name.Trim();
-        shop.CityCode = input.CityCode.Trim();
+        shop.CityCode = cityCode;
         shop.Address = input.Address.Trim();
         shop.Phone = input.Phone.Trim();
         shop.Active = input.Active;
 
-        await store.SaveChangesAsync();
+        try { await store.SaveChangesAsync(); }
+        catch (StoreWriteException error) when (!error.ConcurrentChange)
+        {
+            if (!await store.RetailShopCodeExistsAsync(code, id)) throw;
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
+        }
         var reloaded = await store.FindRetailShopAsync(shop.Id) ?? shop;
         return ToShopView(reloaded);
     }
@@ -152,8 +170,9 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
     public async Task<VendorView> CreateVendorAsync(VendorInput input)
     {
         var code = input.Code.Trim().ToUpperInvariant();
+        const string duplicate = "A vendor with this code already exists.";
         if (await store.VendorCodeExistsAsync(code))
-            throw new UseCaseException(UseCaseFailure.Conflict, "A vendor with this code already exists.");
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
 
         var vendor = new Vendor
         {
@@ -166,7 +185,12 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             Active = input.Active
         };
         store.Add(vendor);
-        await store.SaveChangesAsync();
+        try { await store.SaveChangesAsync(); }
+        catch (StoreWriteException error) when (!error.ConcurrentChange)
+        {
+            if (!await store.VendorCodeExistsAsync(code)) throw;
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
+        }
         return ToVendorView(vendor);
     }
 
@@ -176,8 +200,9 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             ?? throw new UseCaseException(UseCaseFailure.NotFound, "Vendor not found.");
 
         var code = input.Code.Trim().ToUpperInvariant();
+        const string duplicate = "A vendor with this code already exists.";
         if (await store.VendorCodeExistsAsync(code, id))
-            throw new UseCaseException(UseCaseFailure.Conflict, "A vendor with this code already exists.");
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
 
         vendor.Code = code;
         vendor.Name = input.Name.Trim();
@@ -187,7 +212,12 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
         vendor.Address = input.Address.Trim();
         vendor.Active = input.Active;
 
-        await store.SaveChangesAsync();
+        try { await store.SaveChangesAsync(); }
+        catch (StoreWriteException error) when (!error.ConcurrentChange)
+        {
+            if (!await store.VendorCodeExistsAsync(code, id)) throw;
+            throw new UseCaseException(UseCaseFailure.Conflict, duplicate);
+        }
         return ToVendorView(vendor);
     }
 
@@ -220,10 +250,9 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Selected product is inactive.");
 
         ValidatePrice(input.UnitPrice);
-        var serial = await store.NextPurchaseOrderSerialAsync();
         var po = new PurchaseOrder
         {
-            OrderNumber = $"PO-{serial:D6}",
+            OrderNumber = "",
             VendorId = vendor.Id,
             ProductId = product.Id,
             Quantity = input.Quantity,
@@ -234,7 +263,25 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             Note = input.Note?.Trim()
         };
         store.Add(po);
-        await store.SaveChangesAsync();
+
+        // Retry unique OrderNumber collisions across concurrent PO insertions.
+        var serial = 0;
+        const int maxAttempts = 12;
+        for (var attempt = 1; ; attempt++)
+        {
+            serial = Math.Max(await store.NextPurchaseOrderSerialAsync(), serial + 1);
+            po.OrderNumber = $"PO-{serial:D6}";
+            try
+            {
+                await store.SaveChangesAsync();
+                break;
+            }
+            catch (StoreWriteException error) when (!error.ConcurrentChange && attempt < maxAttempts)
+            {
+                await Task.Delay(Random.Shared.Next(5, 25));
+            }
+        }
+
         var reloaded = await store.FindPurchaseOrderAsync(po.Id) ?? po;
         return ToPurchaseOrderView(reloaded);
     }
@@ -273,15 +320,17 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
         var po = await store.FindPurchaseOrderAsync(input.PurchaseOrderId)
             ?? throw new UseCaseException(UseCaseFailure.NotFound, "Purchase order not found.");
 
+        if (po.Status == "Cancelled")
+            throw new UseCaseException(UseCaseFailure.Conflict, "Cannot record payment against a cancelled purchase order.");
+
         var alreadyPaid = po.Payments.Sum(p => p.Amount);
         var remaining = po.TotalAmount - alreadyPaid;
         if (input.Amount > remaining)
             throw new UseCaseException(UseCaseFailure.InvalidInput, $"Payment amount exceeds remaining balance (${remaining:F2}).");
 
-        var serial = await store.NextVendorPaymentSerialAsync();
         var payment = new VendorPayment
         {
-            PaymentNumber = $"VP-{serial:D6}",
+            PaymentNumber = "",
             PurchaseOrderId = po.Id,
             VendorId = po.VendorId,
             Amount = input.Amount,
@@ -291,7 +340,25 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             Note = input.Note?.Trim()
         };
         store.Add(payment);
-        await store.SaveChangesAsync();
+
+        // Retry unique PaymentNumber collisions across concurrent VP insertions.
+        var serial = 0;
+        const int maxAttempts = 12;
+        for (var attempt = 1; ; attempt++)
+        {
+            serial = Math.Max(await store.NextVendorPaymentSerialAsync(), serial + 1);
+            payment.PaymentNumber = $"VP-{serial:D6}";
+            try
+            {
+                await store.SaveChangesAsync();
+                break;
+            }
+            catch (StoreWriteException error) when (!error.ConcurrentChange && attempt < maxAttempts)
+            {
+                await Task.Delay(Random.Shared.Next(5, 25));
+            }
+        }
+
         payment.PurchaseOrder = po;
         payment.Vendor = po.Vendor;
         return ToVendorPaymentView(payment);
@@ -302,9 +369,9 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
     public async Task<IReadOnlyList<EquipmentStockView>> EquipmentStockAsync()
     {
         var products = await store.ListEquipmentProductsAsync();
-        var pendingOrdersCount = await store.CountPendingFeasibleOrdersNeedingConnectionAsync();
         var allocatedCounts = await store.GetProductAllocatedCountsAsync();
 
+        // Pending feasible orders do not bind a product SKU until activation; report 0 per SKU.
         return products.Select(p => new EquipmentStockView(
             p.Id,
             p.Name,
@@ -312,10 +379,13 @@ public sealed class InventoryService(IInventoryStore store, ICatalogStore catalo
             p.Active,
             p.QuantityInStock,
             p.ReplacementPrice,
-            pendingOrdersCount,
+            0,
             allocatedCounts.GetValueOrDefault(p.Id, 0)
         )).ToArray();
     }
+
+    public async Task<EquipmentInventorySummaryView> EquipmentSummaryAsync() =>
+        new(await store.CountPendingFeasibleOrdersNeedingConnectionAsync());
 
     public async Task<IReadOnlyList<EquipmentIncidentView>> IncidentsAsync(bool? settled)
     {

@@ -1,5 +1,9 @@
+/**
+ * Service catalog API client for territory cities, service tariff plans, and hardware products.
+ */
 import type {
   CityInput,
+  CityUpdateInput,
   CityView,
   PlanInput,
   PlanView,
@@ -22,6 +26,15 @@ export function createCity(input: CityInput): Promise<CityView> {
   });
 }
 
+export function updateCity(code: string, input: CityUpdateInput): Promise<CityView> {
+  return apiRequest<CityView>(`/cities/${encodeURIComponent(code.trim())}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: input.name.trim(),
+    }),
+  });
+}
+
 export function getPlans(): Promise<PlanView[]> {
   return apiRequest<PlanView[]>('/plans');
 }
@@ -35,6 +48,12 @@ export function createPlan(input: PlanInput): Promise<PlanView> {
       description: normalizeOptionalString(input.description),
       price: input.price,
       active: input.active,
+      localCallRate: input.localCallRate ?? 0,
+      stdCallRate: input.stdCallRate ?? 0,
+      mobileMsgRate: input.mobileMsgRate ?? 0,
+      validityMonths: input.validityMonths ?? 1,
+      hoursAllowance: input.hoursAllowance ?? null,
+      speedKbps: input.speedKbps ?? null,
     }),
   });
 }
@@ -48,6 +67,12 @@ export function updatePlan(id: number, input: PlanInput): Promise<PlanView> {
       description: normalizeOptionalString(input.description),
       price: input.price,
       active: input.active,
+      localCallRate: input.localCallRate ?? 0,
+      stdCallRate: input.stdCallRate ?? 0,
+      mobileMsgRate: input.mobileMsgRate ?? 0,
+      validityMonths: input.validityMonths ?? 1,
+      hoursAllowance: input.hoursAllowance ?? null,
+      speedKbps: input.speedKbps ?? null,
     }),
   });
 }

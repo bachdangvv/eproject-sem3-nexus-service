@@ -2,10 +2,13 @@ using System.Globalization;
 
 namespace Nexus.Domain;
 
+/// <summary>Represents the 11-character public service order identifier (<c>[D|B|T]0000000001</c>).</summary>
 public readonly record struct OrderNumber(string Type, long Serial)
 {
+    /// <summary>Formats the service type prefix and 10-digit zero-padded serial.</summary>
     public override string ToString() => $"{Type}{Serial:D10}";
 
+    /// <summary>Parses a canonical 11-character order code into its service type and positive serial.</summary>
     public static OrderNumber? Parse(string value)
     {
         var code = value.Trim().ToUpperInvariant();

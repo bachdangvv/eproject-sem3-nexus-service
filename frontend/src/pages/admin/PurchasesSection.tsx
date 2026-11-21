@@ -1,3 +1,6 @@
+/**
+ * Admin hardware purchase order lifecycle section (GET/POST /api/admin/purchases, receive/cancel).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -43,8 +46,8 @@ import {
   extractErrorMessage,
   extractFieldErrors,
   PURCHASE_STATUS_OPTIONS,
-  validatePositiveDecimal,
   validatePositiveInteger,
+  validateUnitPrice,
   type AdminSectionProps,
   type PurchaseOrderRow,
 } from './adminTypes';
@@ -258,12 +261,12 @@ export function PurchasesSection({
       errors.productId = 'Please select an equipment product.';
     }
 
-    const qtyCheck = validatePositiveInteger(createForm.quantityText, 'Quantity');
+    const qtyCheck = validatePositiveInteger(createForm.quantityText, 'Quantity', 100000);
     if (!qtyCheck.valid || qtyCheck.value <= 0) {
-      errors.quantity = 'Quantity must be at least 1 unit.';
+      errors.quantity = qtyCheck.valid ? 'Quantity must be at least 1 unit.' : qtyCheck.message;
     }
 
-    const priceCheck = validatePositiveDecimal(createForm.unitPriceText, 'Unit Price');
+    const priceCheck = validateUnitPrice(createForm.unitPriceText, 'Unit Price');
     if (!priceCheck.valid) {
       errors.unitPrice = priceCheck.message;
     }

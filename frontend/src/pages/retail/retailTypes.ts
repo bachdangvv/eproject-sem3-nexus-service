@@ -1,3 +1,6 @@
+/**
+ * Shared types, section metadata, regex constants, and validation helpers for the Retail Portal.
+ */
 import {
   ApiError,
   type CustomerStatus,
@@ -8,7 +11,15 @@ import {
   type ServiceTypeCode,
 } from '../../types/nexus';
 
-export type RetailSection = 'customers' | 'requests' | 'orders' | 'billing';
+export type RetailSection =
+  | 'customers'
+  | 'requests'
+  | 'orders'
+  | 'billing'
+  | 'lifecycle'
+  | 'documents'
+  | 'plan-changes'
+  | 'queries';
 
 export type CustomerRow = CustomerView & Record<string, unknown>;
 export type RequestRow = RequestView & Record<string, unknown>;
@@ -49,6 +60,34 @@ export const RETAIL_SECTION_META: Record<RetailSection, RetailSectionMeta> = {
     subtitle:
       'Look up connected accounts, review till-date billing details, and collect in-store payments.',
     countLabel: 'accounts',
+  },
+  lifecycle: {
+    title: 'Connection Lifecycle & Refund Tracker',
+    tokenLabel: 'Lifecycle',
+    subtitle:
+      'Inspect subscriber line statuses, active suspensions, termination history, and security deposit refund settlement tracking.',
+    countLabel: 'connections',
+  },
+  documents: {
+    title: 'Customer Document Archival',
+    tokenLabel: 'Documents',
+    subtitle:
+      'Archive, filter by year and territory city, and upload subscriber KYC, registration, and payment documents.',
+    countLabel: 'documents',
+  },
+  'plan-changes': {
+    title: 'Plan Change Requests',
+    tokenLabel: 'Plan Changes',
+    subtitle:
+      'Submit tariff change requests for active subscriber connections and track approval status.',
+    countLabel: 'requests',
+  },
+  queries: {
+    title: 'Customer Queries & FAQ Catalog',
+    tokenLabel: 'Queries & FAQ',
+    subtitle:
+      'Log customer inquiries, respond to open tickets, and browse or publish dynamic FAQ catalog entries.',
+    countLabel: 'queries',
   },
 };
 

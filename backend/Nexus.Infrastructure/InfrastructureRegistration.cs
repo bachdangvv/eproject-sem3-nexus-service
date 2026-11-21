@@ -7,10 +7,13 @@ using Nexus.Infrastructure.Persistence;
 
 namespace Nexus.Infrastructure;
 
+/// <summary>Registers EF Core persistence, stores, and Identity password hashing services.</summary>
 public static class InfrastructureRegistration
 {
+    /// <summary>Configures SQLite demo or SQL Server database context and application store bindings.</summary>
     public static IServiceCollection AddNexusInfrastructure(this IServiceCollection services, bool demo, string connection)
     {
+        // Demo mode uses SQLite with deterministic seeding; production uses SQL Server.
         if (demo)
         {
             services.AddDbContext<NexusDb, DemoDb>(options =>
@@ -27,11 +30,13 @@ public static class InfrastructureRegistration
         services.AddScoped<IBillingStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IStaffStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IInventoryStore>(provider => provider.GetRequiredService<EfNexusStore>());
+        services.AddScoped<ICustomerPortalStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
         services.AddScoped<IPasswordService, IdentityPasswordService>();
         return services;
     }
 
+    /// <summary>Applies pending EF migrations and seeds the initial production admin if configured.</summary>
     public static void InitializeNexusDatabase(this IServiceProvider services, string? initialPassword)
     {
         using var scope = services.CreateScope();

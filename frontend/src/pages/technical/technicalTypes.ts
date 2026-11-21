@@ -1,3 +1,6 @@
+/**
+ * Shared types, section metadata, and Order ID validation helpers for the Technical Portal.
+ */
 import {
   ApiError,
   type OrderStatus,
@@ -5,7 +8,13 @@ import {
   type ServiceTypeCode,
 } from '../../types/nexus';
 
-export type TechnicalSection = 'assessments' | 'connections' | 'equipment' | 'orders';
+export type TechnicalSection =
+  | 'assessments'
+  | 'connections'
+  | 'equipment'
+  | 'orders'
+  | 'lifecycle'
+  | 'plan-changes';
 
 export type OrderRow = OrderView & Record<string, unknown>;
 
@@ -44,6 +53,20 @@ export const TECHNICAL_SECTION_META: Record<TechnicalSection, TechnicalSectionMe
     subtitle:
       'Inspect all service orders across Pending, Feasible, Not Feasible, and Connected states with full audit history.',
     countLabel: 'orders',
+  },
+  lifecycle: {
+    title: 'Subscriber Connection Lifecycle',
+    tokenLabel: 'Lifecycle',
+    subtitle:
+      'Manage active subscriber lines, execute temporary suspensions, line reactivations, and permanent terminations with deposit refund determination.',
+    countLabel: 'connections',
+  },
+  'plan-changes': {
+    title: 'Subscriber Plan Change Reviews',
+    tokenLabel: 'Plan Changes',
+    subtitle:
+      'Review, approve, or reject subscriber service plan migration requests and update active line tariffs.',
+    countLabel: 'requests',
   },
 };
 

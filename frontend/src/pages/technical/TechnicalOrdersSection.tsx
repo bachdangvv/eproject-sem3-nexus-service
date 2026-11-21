@@ -1,3 +1,6 @@
+/**
+ * Technical service order pipeline directory and 5-criteria advanced search section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -13,6 +16,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { VStack } from '@astryxdesign/core/VStack';
+import { OrderAdvancedSearchPanel } from '../../components/OrderAdvancedSearchPanel';
 import {
   ApiErrorBanner,
   CopyableId,
@@ -22,8 +26,13 @@ import {
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
-import { getOrderDetail, getOrders } from '../../services/operationsApi';
-import type { OrderDetailView, OrderView } from '../../types/nexus';
+import { getOrderDetail, getOrders, searchOrders } from '../../services/operationsApi';
+import {
+  DEFAULT_ADVANCED_SEARCH_FILTERS,
+  type OrderAdvancedSearchFilters,
+  type OrderDetailView,
+  type OrderView,
+} from '../../types/nexus';
 import {
   extractErrorMessage,
   isValidOrderCode,
@@ -50,6 +59,13 @@ export function TechnicalOrdersSection({
   const [orderDetail, setOrderDetail] = useState<OrderDetailView | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
+  const [isAdvancedSearchActive, setIsAdvancedSearchActive] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<OrderAdvancedSearchFilters>(
+    DEFAULT_ADVANCED_SEARCH_FILTERS,
+  );
+  const [searchExecutionId, setSearchExecutionId] = useState(0);
 
   const isMountedRef = useRef(true);
   const requestSeqRef = useRef(0);
@@ -114,12 +130,55 @@ export function TechnicalOrdersSection({
     [onCountChange, onRefreshingChange],
   );
 
+  const runAdvancedSearchQuery = useCallback(
+    async (
+      filters: OrderAdvancedSearchFilters,
+      status: OrderStatusFilter,
+      silent = false,
+    ) => {
+      if (!isMountedRef.current) return;
+      const seq = ++requestSeqRef.current;
+      if (silent) {
+        onRefreshingChange(true);
+      } else {
+        setLoading(true);
+      }
+      setLoadError(null);
+      try {
+        const data = await searchOrders({
+          code: filters.code,
+          customerName: filters.customerName,
+          serviceType: filters.serviceType,
+          phone: filters.phone,
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+          status: status === 'ALL' ? undefined : status,
+        });
+        if (!isMountedRef.current || seq !== requestSeqRef.current) return;
+        setOrders(data);
+        onCountChange(data.length);
+      } catch (err) {
+        if (!isMountedRef.current || seq !== requestSeqRef.current) return;
+        setLoadError(extractErrorMessage(err, 'Failed to execute advanced search.'));
+      } finally {
+        if (isMountedRef.current && seq === requestSeqRef.current) {
+          setLoading(false);
+          onRefreshingChange(false);
+        }
+      }
+    },
+    [onCountChange, onRefreshingChange],
+  );
+
   useEffect(() => {
     const isSilent = hasLoadedOnceRef.current && refreshTrigger > 0;
     hasLoadedOnceRef.current = true;
     let cancelled = false;
     void Promise.resolve().then(() => {
       if (!cancelled && isMountedRef.current) {
+        if (isAdvancedSearchActive) {
+          return runAdvancedSearchQuery(advancedFilters, statusFilter, isSilent);
+        }
         return fetchOrders(statusFilter, exactServerCode, isSilent);
       }
       return undefined;
@@ -127,7 +186,15 @@ export function TechnicalOrdersSection({
     return () => {
       cancelled = true;
     };
-  }, [exactServerCode, fetchOrders, refreshTrigger, statusFilter]);
+  }, [
+    advancedFilters,
+    exactServerCode,
+    fetchOrders,
+    isAdvancedSearchActive,
+    refreshTrigger,
+    runAdvancedSearchQuery,
+    statusFilter,
+  ]);
 
   const filteredOrders = useMemo<OrderRow[]>(() => {
     const needle = trimmedSearch.toLowerCase();
@@ -146,8 +213,34 @@ export function TechnicalOrdersSection({
       .map((order) => ({ ...order }));
   }, [orders, trimmedSearch]);
 
+  const handleExecuteAdvancedSearch = async (filters: OrderAdvancedSearchFilters) => {
+    setIsAdvancedSearchActive(true);
+    await runAdvancedSearchQuery(filters, statusFilter, false);
+    if (isMountedRef.current) {
+      setSearchExecutionId((c) => c + 1);
+    }
+  };
+
+  const handleResetAdvancedSearch = () => {
+    setIsAdvancedSearchActive(false);
+    setAdvancedFilters(DEFAULT_ADVANCED_SEARCH_FILTERS);
+    setSearchExecutionId((c) => c + 1);
+    void fetchOrders(statusFilter, exactServerCode, false);
+  };
+
+  const hasActiveAdvancedFilters = Boolean(
+    advancedFilters.code.trim() ||
+      advancedFilters.customerName.trim() ||
+      (advancedFilters.serviceType && advancedFilters.serviceType !== 'ALL') ||
+      advancedFilters.fromDate.trim() ||
+      advancedFilters.toDate.trim() ||
+      advancedFilters.phone.trim(),
+  );
+
+  const hasAnyFilter = statusFilter !== 'ALL' || Boolean(trimmedSearch) || hasActiveAdvancedFilters;
+
   const pagination = useClientPagination(filteredOrders, {
-    resetKey: `${statusFilter}::${trimmedSearch.toLowerCase()}`,
+    resetKey: `${statusFilter}::${trimmedSearch.toLowerCase()}::${searchExecutionId}`,
   });
 
   const handleOpenDetail = async (code: string) => {
@@ -264,24 +357,42 @@ export function TechnicalOrdersSection({
             <Badge variant="neutral" label={`${filteredOrders.length} total`} />
           </HStack>
 
-          <TextInput
-            type="search"
-            label="Search Orders"
-            placeholder="Filter by Order ID, customer, address, plan, or Account ID..."
-            description="Partial text filters loaded orders; full 11-char Order ID (e.g. B0000000001) queries exact match."
-            startIcon={<Icon icon="search" />}
-            hasClear
-            width={360}
-            value={searchInput}
-            onChange={(value) => {
-              setSearchInput(value);
-              if (value === '') {
-                setDebouncedSearch('');
-              }
-            }}
-            onEnter={() => setDebouncedSearch(trimmedSearch)}
-          />
+          <HStack gap={2} vAlign="end" wrap="wrap">
+            <Button
+              variant={isAdvancedSearchOpen ? 'secondary' : 'ghost'}
+              label={isAdvancedSearchOpen ? 'Simple Search' : 'Advanced Search'}
+              icon={<Icon icon="funnel" />}
+              onClick={() => setIsAdvancedSearchOpen((prev) => !prev)}
+            />
+            <TextInput
+              type="search"
+              label="Search Orders"
+              placeholder="Filter by Order ID, customer, address, plan, or Account ID..."
+              description="Partial text filters loaded orders; full 11-char Order ID (e.g. B0000000001) queries exact match."
+              startIcon={<Icon icon="search" />}
+              hasClear
+              width={360}
+              value={searchInput}
+              onChange={(value) => {
+                setSearchInput(value);
+                if (value === '') {
+                  setDebouncedSearch('');
+                }
+              }}
+              onEnter={() => setDebouncedSearch(trimmedSearch)}
+            />
+          </HStack>
         </HStack>
+
+        {isAdvancedSearchOpen && (
+          <OrderAdvancedSearchPanel
+            filters={advancedFilters}
+            onChange={setAdvancedFilters}
+            onSearch={(f) => void handleExecuteAdvancedSearch(f)}
+            onReset={handleResetAdvancedSearch}
+            isLoading={loading}
+          />
+        )}
 
         <ApiErrorBanner
           title="Orders lookup error"
@@ -312,20 +423,29 @@ export function TechnicalOrdersSection({
                 <EmptyState
                   title="No matching orders"
                   description={
-                    statusFilter !== 'ALL' || trimmedSearch
-                      ? 'Try clearing the search query or switching the status filter to All.'
+                    hasAnyFilter
+                      ? 'Try clearing the search query or resetting filters.'
                       : 'No confirmed orders have been placed yet.'
                   }
                   icon={<Icon icon="info" />}
                   actions={
-                    statusFilter !== 'ALL' || trimmedSearch ? (
+                    hasAnyFilter ? (
                       <Button
                         variant="secondary"
                         label="Reset Filters"
                         onClick={() => {
+                          const willTriggerEffectFetch =
+                            statusFilter !== 'ALL' || exactServerCode !== undefined;
                           setStatusFilter('ALL');
                           setSearchInput('');
                           setDebouncedSearch('');
+                          if (hasActiveAdvancedFilters) {
+                            setAdvancedFilters(DEFAULT_ADVANCED_SEARCH_FILTERS);
+                            setSearchExecutionId((c) => c + 1);
+                            if (!willTriggerEffectFetch) {
+                              void fetchOrders('ALL', undefined, false);
+                            }
+                          }
                         }}
                       />
                     ) : undefined

@@ -1,3 +1,6 @@
+/**
+ * Frontend SPA entry point mounting the React root and Astryx base stylesheets.
+ */
 import '@astryxdesign/core/reset.css';
 import '@astryxdesign/core/astryx.css';
 import { StrictMode } from 'react';

@@ -1,3 +1,6 @@
+/**
+ * Admin telecom equipment vendor directory and management section (GET/POST/PUT/DELETE /api/admin/vendors).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
@@ -33,6 +36,8 @@ import type { VendorInput, VendorView } from '../../types/nexus';
 import {
   extractErrorMessage,
   extractFieldErrors,
+  SHOP_VENDOR_CODE_REGEX,
+  STAFF_PHONE_REGEX,
   type AdminSectionProps,
   type VendorRow,
 } from './adminTypes';
@@ -71,8 +76,8 @@ function validateVendorForm(form: VendorFormState): VendorFieldErrors {
   const trimmedCode = form.code.trim();
   if (!trimmedCode) {
     errors.code = 'Vendor code is required (e.g. VND-CISCO).';
-  } else if (!/^[a-zA-Z0-9_-]{2,20}$/.test(trimmedCode)) {
-    errors.code = 'Vendor code must be 2-20 alphanumeric characters or hyphens.';
+  } else if (!SHOP_VENDOR_CODE_REGEX.test(trimmedCode)) {
+    errors.code = 'Vendor code must be 2–30 characters using letters, numbers, ".", "_", or "-".';
   }
 
   const trimmedName = form.name.trim();
@@ -92,8 +97,8 @@ function validateVendorForm(form: VendorFormState): VendorFieldErrors {
   const trimmedPhone = form.phone.trim();
   if (!trimmedPhone) {
     errors.phone = 'Phone number is required.';
-  } else if (trimmedPhone.length > 30) {
-    errors.phone = 'Phone number must be 30 characters or fewer.';
+  } else if (!STAFF_PHONE_REGEX.test(trimmedPhone)) {
+    errors.phone = 'Phone must be 7 to 15 digits (optional leading +).';
   }
 
   const trimmedEmail = form.email.trim();
@@ -201,7 +206,6 @@ export function VendorsSection({
           item.address.toLowerCase().includes(needle)
         );
       })
-      .sort((a, b) => Number(b.active) - Number(a.active))
       .map((item) => ({ ...item }));
   }, [vendors, searchQuery]);
 

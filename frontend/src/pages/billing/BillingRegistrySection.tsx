@@ -1,3 +1,6 @@
+/**
+ * Billing connected accounts registry, financial KPI overview, and batch invoice inspection section.
+ */
 import {
   useCallback,
   useEffect,
@@ -36,16 +39,19 @@ import {
   createBillingRecord,
   getBillingAccount,
   recordPayment,
+  refundDeposit,
 } from '../../services/billingApi';
 import {
   ApiError,
   type BillingView,
   type CreateInvoiceInput,
   type RecordPaymentInput,
+  type RefundDepositInput,
 } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
   BILLING_STATUS_FILTER_ITEMS,
+  computeCollectedAmount,
   formatBillingError,
   normalizeAccountId,
   parseAccountIdMetadata,
@@ -82,6 +88,7 @@ export function BillingRegistrySection({
   const drawerSeqRef = useRef(0);
   const generatingBillRef = useRef(false);
   const processingPaymentRef = useRef(false);
+  const refundingDepositRef = useRef(false);
   const hasMountedRefreshRef = useRef(false);
   const recordsRef = useRef(records);
 
@@ -142,14 +149,14 @@ export function BillingRegistrySection({
         );
         setActionError(
           failures.length === current.length
-            ? `Failed to refresh session registry (${failures.length} of ${current.length} failed): ${detail}`
+            ? `Failed to refresh billing registry (${failures.length} of ${current.length} failed): ${detail}`
             : `Refreshed ${updated.length} of ${current.length} accounts; ${failures.length} failed (${first.accountId}): ${detail}`,
         );
       }
     } catch (err) {
       if (!isMountedRef.current || seq !== requestSeqRef.current) return;
       setActionError(
-        formatBillingError(err, 'session accounts', 'Failed to refresh session registry.'),
+        formatBillingError(err, 'registry accounts', 'Failed to refresh billing registry.'),
       );
     } finally {
       if (isMountedRef.current) {
@@ -181,13 +188,15 @@ export function BillingRegistrySection({
   const summary = useMemo(() => {
     let notBilled = 0;
     let unpaid = 0;
+    let partiallyPaid = 0;
     let paid = 0;
     for (const rec of records) {
       if (rec.status === 'NotBilled') notBilled += 1;
       else if (rec.status === 'Unpaid') unpaid += 1;
+      else if (rec.status === 'PartiallyPaid') partiallyPaid += 1;
       else paid += 1;
     }
-    return { total: records.length, notBilled, unpaid, paid };
+    return { total: records.length, notBilled, unpaid, partiallyPaid, paid };
   }, [records]);
 
   const filteredRows = useMemo<BillingRow[]>(() => {
@@ -253,9 +262,17 @@ export function BillingRegistrySection({
 
   const handleRecordPayment = async (accountId: string, input?: RecordPaymentInput) => {
     const normalized = normalizeAccountId(accountId);
-    if (!normalized || processingPaymentRef.current || generatingBillRef.current) {
+    if (
+      !normalized ||
+      processingPaymentRef.current ||
+      generatingBillRef.current ||
+      refundingDepositRef.current
+    ) {
       return;
     }
+    const prevRecord =
+      recordsRef.current.find((r) => r.accountId === normalized) ??
+      (drawerRecord?.accountId === normalized ? drawerRecord : null);
     processingPaymentRef.current = true;
     setBusyAccountId(normalized);
     setActionError(null);
@@ -268,8 +285,13 @@ export function BillingRegistrySection({
       setDrawerRecord((prev) =>
         prev && prev.accountId === updated.accountId ? updated : prev,
       );
+      const collectedAmount = computeCollectedAmount(prevRecord, updated, input?.amount);
       toast({
-        body: `Recorded payment of ${formatUsd(input?.amount ?? updated.amount)} for ${updated.accountId}.`,
+        body: `Recorded payment of ${formatUsd(collectedAmount)} for ${updated.accountId}${
+          updated.status === 'PartiallyPaid'
+            ? ` (${formatUsd(updated.dueAmount ?? 0)} remaining)`
+            : ''
+        }.`,
       });
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -295,6 +317,61 @@ export function BillingRegistrySection({
       }
     } finally {
       processingPaymentRef.current = false;
+      if (isMountedRef.current) {
+        setBusyAccountId(null);
+      }
+    }
+  };
+
+  const handleRefundDeposit = async (accountId: string, input?: RefundDepositInput) => {
+    const normalized = normalizeAccountId(accountId);
+    if (
+      !normalized ||
+      refundingDepositRef.current ||
+      generatingBillRef.current ||
+      processingPaymentRef.current
+    ) {
+      return;
+    }
+    refundingDepositRef.current = true;
+    setBusyAccountId(normalized);
+    setActionError(null);
+    setDrawerError(null);
+
+    try {
+      const updated = await refundDeposit(normalized, input);
+      if (!isMountedRef.current) return;
+      onRecordUpsert(updated);
+      setDrawerRecord((prev) =>
+        prev && prev.accountId === updated.accountId ? updated : prev,
+      );
+      toast({
+        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
+      });
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      const msg = formatBillingError(
+        err,
+        normalized,
+        `Could not disburse security deposit refund for ${normalized}.`,
+      );
+      setActionError(msg);
+      if (drawerOpen) {
+        setDrawerError(msg);
+      }
+      if (err instanceof ApiError && err.status === 409) {
+        void getBillingAccount(normalized)
+          .then((fresh) => {
+            if (!isMountedRef.current) return;
+            onRecordUpsert(fresh);
+            setDrawerRecord((prev) =>
+              prev && prev.accountId === fresh.accountId ? fresh : prev,
+            );
+          })
+          .catch(() => { });
+      }
+    } finally {
+      refundingDepositRef.current = false;
       if (isMountedRef.current) {
         setBusyAccountId(null);
       }
@@ -419,7 +496,7 @@ export function BillingRegistrySection({
               isDisabled={busyAccountId !== null}
               onClick={() => void handleCreateBill(row.accountId)}
             />
-          ) : row.status === 'Unpaid' ? (
+          ) : row.status === 'Unpaid' || row.status === 'PartiallyPaid' ? (
             <Button
               size="sm"
               variant="primary"
@@ -446,7 +523,7 @@ export function BillingRegistrySection({
 
   return (
     <VStack gap={5}>
-      <Grid columns={{ minWidth: 180, max: 4 }} gap={4}>
+      <Grid columns={{ minWidth: 160, max: 5 }} gap={4}>
         <Card padding={4}>
           <VStack gap={1}>
             <Text type="supporting">Tracked Accounts</Text>
@@ -463,6 +540,12 @@ export function BillingRegistrySection({
           <VStack gap={1}>
             <Text type="supporting">Unpaid</Text>
             <Heading level={2}>{summary.unpaid}</Heading>
+          </VStack>
+        </Card>
+        <Card padding={4}>
+          <VStack gap={1}>
+            <Text type="supporting">Partially Paid</Text>
+            <Heading level={2}>{summary.partiallyPaid}</Heading>
           </VStack>
         </Card>
         <Card padding={4}>
@@ -489,7 +572,7 @@ export function BillingRegistrySection({
 
             <TextInput
               type="search"
-              label="Filter Session Registry"
+              label="Filter Billing Registry"
               placeholder="Filter by Account ID, Order ID, customer, or plan..."
               startIcon={<Icon icon="search" />}
               hasClear
@@ -506,7 +589,7 @@ export function BillingRegistrySection({
           />
 
           <Table<BillingRow>
-            aria-label="Billing Session Accounts Registry"
+            aria-label="Billing Accounts Registry"
             density="compact"
             dividers="rows"
             hasHover
@@ -519,12 +602,12 @@ export function BillingRegistrySection({
               <EmptyState
                 title={
                   records.length === 0
-                    ? 'No accounts inspected in this session'
+                    ? 'No accounts loaded in registry'
                     : 'No matching billing accounts'
                 }
                 description={
                   records.length === 0
-                    ? 'Look up a connected 16-character Account ID in Account Lookup to add it to this session registry.'
+                    ? 'Look up a connected 16-character Account ID in Account Lookup to add it to the billing registry.'
                     : 'Try clearing the search query or switching the billing status filter to All Statuses.'
                 }
                 icon={<Icon icon="info" />}
@@ -555,7 +638,7 @@ export function BillingRegistrySection({
             totalItems={pagination.totalItems}
             onPageChange={pagination.setPage}
             onPageSizeChange={pagination.setPageSize}
-            label="Billing session registry pagination"
+            label="Billing accounts registry pagination"
           />
         </VStack>
       </Card>
@@ -572,6 +655,7 @@ export function BillingRegistrySection({
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </VStack>
   );

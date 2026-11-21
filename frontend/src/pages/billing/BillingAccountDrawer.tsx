@@ -1,7 +1,11 @@
-import { useState, type FormEvent, type JSX } from 'react';
+import { useMemo, useState, type FormEvent, type JSX } from 'react';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import type { ISODateString } from '@astryxdesign/core/Calendar';
 import { Card } from '@astryxdesign/core/Card';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { Code } from '@astryxdesign/core/Code';
+import { DateInput } from '@astryxdesign/core/DateInput';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Drawer, DrawerHeader } from '@astryxdesign/core/Drawer';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
@@ -17,22 +21,35 @@ import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
-import { Token } from '@astryxdesign/core/Token';
+import { Token, type TokenColor } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   ApiErrorBanner,
   BillingStatusPill,
   CopyableId,
+  OrderStatusPill,
   ServiceTypeToken,
+  StatusLabel,
   formatUsd,
 } from '../../components/StatusViews';
+import { TablePaginationFooter } from '../../components/TablePagination';
+import { useClientPagination } from '../../hooks/useClientPagination';
 import type {
+  BillingStatus,
   BillingView,
   CreateInvoiceInput,
+  InvoiceItemView,
   PaymentItemView,
   RecordPaymentInput,
+  RefundDepositInput,
 } from '../../types/nexus';
-import { formatCityLabel, parseAccountIdMetadata } from './billingTypes';
+import {
+  formatCityLabel,
+  parseAccountIdMetadata,
+  validateNonNegativeCurrency,
+  validateNonNegativeInt,
+  validatePositiveCurrency,
+} from './billingTypes';
 
 export interface BillingAccountDrawerProps {
   record: BillingView | null;
@@ -46,6 +63,44 @@ export interface BillingAccountDrawerProps {
   onRefresh?: (accountId: string) => void;
   onCreateBill?: (accountId: string, input?: CreateInvoiceInput) => Promise<void> | void;
   onRecordPayment?: (accountId: string, input?: RecordPaymentInput) => Promise<void> | void;
+  onRefundDeposit?: (accountId: string, input?: RefundDepositInput) => Promise<void> | void;
+}
+
+interface InvoiceFormErrors {
+  localMins?: string;
+  stdMins?: string;
+  mobileMins?: string;
+  equipFee?: string;
+  periodEnd?: string;
+}
+
+function getRefundTokenColor(status?: string): TokenColor {
+  switch (status) {
+    case 'Refunded':
+    case 'Processed':
+      return 'green';
+    case 'Pending':
+      return 'yellow';
+    case 'Forfeited':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
+function renderInvoiceStatusPill(status: string): JSX.Element {
+  if (
+    status === 'Paid' ||
+    status === 'PartiallyPaid' ||
+    status === 'Unpaid' ||
+    status === 'NotBilled'
+  ) {
+    return <BillingStatusPill status={status as BillingStatus} />;
+  }
+  if (status === 'RolledOver') {
+    return <StatusLabel variant="neutral" label="Rolled Over" />;
+  }
+  return <StatusLabel variant="neutral" label={status} />;
 }
 
 export function BillingAccountDrawer({
@@ -60,12 +115,17 @@ export function BillingAccountDrawer({
   onRefresh,
   onCreateBill,
   onRecordPayment,
+  onRefundDeposit,
 }: BillingAccountDrawerProps): JSX.Element {
   const parsedMeta = record ? parseAccountIdMetadata(record.accountId) : null;
   const isLandline = parsedMeta?.serviceType === 'T';
 
   const activeStep =
-    record?.status === 'Paid' ? 2 : record?.status === 'Unpaid' || record?.status === 'PartiallyPaid' ? 1 : 0;
+    record?.status === 'Paid'
+      ? 2
+      : record?.status === 'Unpaid' || record?.status === 'PartiallyPaid'
+        ? 1
+        : 0;
 
   // Invoice creation form state
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
@@ -73,22 +133,119 @@ export function BillingAccountDrawer({
   const [stdMins, setStdMins] = useState('0');
   const [mobileMins, setMobileMins] = useState('0');
   const [equipFee, setEquipFee] = useState('0');
+  const [includeDeposit, setIncludeDeposit] = useState(
+    (record?.invoices?.length ?? 0) === 0 && record?.status === 'NotBilled',
+  );
+  const [periodStart, setPeriodStart] = useState<ISODateString | undefined>(undefined);
+  const [periodEnd, setPeriodEnd] = useState<ISODateString | undefined>(undefined);
+  const [invoiceErrors, setInvoiceErrors] = useState<InvoiceFormErrors>({});
 
   // Payment recording form state
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentAmountError, setPaymentAmountError] = useState<string | null>(null);
   const [paymentNote, setPaymentNote] = useState('');
 
+  // Refund disbursement form state
+  const [showRefundForm, setShowRefundForm] = useState(false);
+  const [refundNote, setRefundNote] = useState('');
+
+  const accountIdKey = record?.accountId ?? null;
+  const [prevAccountId, setPrevAccountId] = useState<string | null>(accountIdKey);
+  if (prevAccountId !== accountIdKey) {
+    setPrevAccountId(accountIdKey);
+    setShowInvoiceForm(false);
+    setLocalMins('0');
+    setStdMins('0');
+    setMobileMins('0');
+    setEquipFee('0');
+    setIncludeDeposit((record?.invoices?.length ?? 0) === 0 && record?.status === 'NotBilled');
+    setPeriodStart(undefined);
+    setPeriodEnd(undefined);
+    setInvoiceErrors({});
+    setShowPaymentForm(false);
+    setPaymentAmount('');
+    setPaymentAmountError(null);
+    setPaymentNote('');
+    setShowRefundForm(false);
+    setRefundNote('');
+  }
+
   const effectiveDue = record?.dueAmount ?? (record?.status === 'Paid' ? 0 : record?.amount ?? 0);
+  const canDisburseRefund = Boolean(
+    onRefundDeposit &&
+      record &&
+      record.connectionStatus === 'PermanentlyInactive' &&
+      record.refundStatus === 'Pending' &&
+      (record.refundAmount ?? 0) > 0,
+  );
+
+  const invoiceRows = useMemo(
+    () =>
+      (record?.invoices ?? []) as unknown as (InvoiceItemView & Record<string, unknown>)[],
+    [record?.invoices],
+  );
+
+  const invoicePagination = useClientPagination(invoiceRows, {
+    resetKey: record?.accountId ?? '',
+  });
+
+  const paymentRows = useMemo(
+    () =>
+      (record?.payments ?? []) as unknown as (PaymentItemView & Record<string, unknown>)[],
+    [record?.payments],
+  );
+
+  const paymentPagination = useClientPagination(paymentRows, {
+    resetKey: record?.accountId ?? '',
+  });
 
   const handleGenerateInvoiceSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!record || !onCreateBill) return;
+
+    const nextErrors: InvoiceFormErrors = {};
+    const localCheck = isLandline
+      ? validateNonNegativeInt(localMins, 'Local call minutes')
+      : { value: 0, error: null };
+    if (localCheck.error) nextErrors.localMins = localCheck.error;
+
+    const stdCheck = isLandline
+      ? validateNonNegativeInt(stdMins, 'STD call minutes')
+      : { value: 0, error: null };
+    if (stdCheck.error) nextErrors.stdMins = stdCheck.error;
+
+    const mobileCheck = isLandline
+      ? validateNonNegativeInt(mobileMins, 'Mobile messaging minutes')
+      : { value: 0, error: null };
+    if (mobileCheck.error) nextErrors.mobileMins = mobileCheck.error;
+
+    const equipCheck = validateNonNegativeCurrency(equipFee, 'equipment replacement fee');
+    if (equipCheck.error) nextErrors.equipFee = equipCheck.error;
+
+    if (periodStart && periodEnd && periodEnd <= periodStart) {
+      nextErrors.periodEnd = 'Billing period end must be after billing period start.';
+    }
+
+    setInvoiceErrors(nextErrors);
+    if (
+      Object.keys(nextErrors).length > 0 ||
+      localCheck.value === null ||
+      stdCheck.value === null ||
+      mobileCheck.value === null ||
+      equipCheck.value === null
+    ) {
+      return;
+    }
+
     const input: CreateInvoiceInput = {
-      localMinutes: Math.max(0, parseInt(localMins, 10) || 0),
-      stdMinutes: Math.max(0, parseInt(stdMins, 10) || 0),
-      mobileMinutes: Math.max(0, parseInt(mobileMins, 10) || 0),
-      equipmentFee: Math.max(0, parseFloat(equipFee) || 0),
+      localMinutes: localCheck.value,
+      stdMinutes: stdCheck.value,
+      mobileMinutes: mobileCheck.value,
+      equipmentFee: equipCheck.value,
+      includeDeposit,
+      periodStart: periodStart ? `${periodStart}T00:00:00Z` : undefined,
+      periodEnd: periodEnd ? `${periodEnd}T00:00:00Z` : undefined,
     };
     await onCreateBill(record.accountId, input);
     setShowInvoiceForm(false);
@@ -97,9 +254,14 @@ export function BillingAccountDrawer({
   const handleRecordPaymentSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!record || !onRecordPayment) return;
-    const parsedAmount = parseFloat(paymentAmount);
+    const { value, error: validationError } = validatePositiveCurrency(paymentAmount);
+    if (validationError || value === null) {
+      setPaymentAmountError(validationError ?? 'Enter a valid positive payment amount.');
+      return;
+    }
+    setPaymentAmountError(null);
     const input: RecordPaymentInput = {
-      amount: !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : effectiveDue,
+      amount: value,
       channel: 'CityOffice',
       note: paymentNote.trim() || undefined,
     };
@@ -108,6 +270,77 @@ export function BillingAccountDrawer({
     setPaymentAmount('');
     setPaymentNote('');
   };
+
+  const handleRefundSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!record || !onRefundDeposit || !canDisburseRefund) return;
+    if (refundNote.trim().length > 500) return;
+    await onRefundDeposit(record.accountId, {
+      note: refundNote.trim() || undefined,
+    });
+    setShowRefundForm(false);
+    setRefundNote('');
+  };
+
+  const invoiceColumns: TableColumn<InvoiceItemView & Record<string, unknown>>[] = [
+    {
+      key: 'invoiceNumber',
+      header: 'Invoice #',
+      width: pixel(155),
+      renderCell: (inv) => <Code>{inv.invoiceNumber}</Code>,
+    },
+    {
+      key: 'period',
+      header: 'Billing Period',
+      width: pixel(180),
+      renderCell: (inv) => (
+        <Text type="supporting">
+          <Timestamp value={inv.billingPeriodStart} format="date" />
+          {' — '}
+          <Timestamp value={inv.billingPeriodEnd} format="date" />
+        </Text>
+      ),
+    },
+    {
+      key: 'totalAmount',
+      header: 'Total',
+      width: pixel(95),
+      align: 'end',
+      renderCell: (inv) => (
+        <Text weight="semibold" hasTabularNumbers>
+          {formatUsd(inv.totalAmount)}
+        </Text>
+      ),
+    },
+    {
+      key: 'paidAmount',
+      header: 'Paid',
+      width: pixel(90),
+      align: 'end',
+      renderCell: (inv) => (
+        <Text type="supporting" hasTabularNumbers>
+          {formatUsd(inv.paidAmount)}
+        </Text>
+      ),
+    },
+    {
+      key: 'dueAmount',
+      header: 'Due',
+      width: pixel(90),
+      align: 'end',
+      renderCell: (inv) => (
+        <Text weight="semibold" hasTabularNumbers>
+          {formatUsd(inv.dueAmount)}
+        </Text>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: pixel(135),
+      renderCell: (inv) => renderInvoiceStatusPill(inv.status),
+    },
+  ];
 
   const paymentColumns: TableColumn<PaymentItemView & Record<string, unknown>>[] = [
     {
@@ -129,12 +362,24 @@ export function BillingAccountDrawer({
     {
       key: 'channel',
       header: 'Channel',
-      width: pixel(110),
+      width: pixel(120),
       renderCell: (p: PaymentItemView & Record<string, unknown>) => (
         <Token
           size="sm"
-          color={p.channel === 'RetailOutlet' ? 'purple' : 'blue'}
-          label={p.channel === 'RetailOutlet' ? 'Retail Outlet' : 'City Office'}
+          color={
+            p.channel === 'CustomerPortal'
+              ? 'teal'
+              : p.channel === 'RetailOutlet'
+                ? 'purple'
+                : 'blue'
+          }
+          label={
+            p.channel === 'CustomerPortal'
+              ? 'Customer Portal'
+              : p.channel === 'RetailOutlet'
+                ? 'Retail Outlet'
+                : 'City Office'
+          }
         />
       ),
     },
@@ -244,6 +489,28 @@ export function BillingAccountDrawer({
                   <MetadataListItem label="Billing Status">
                     <BillingStatusPill status={record.status} />
                   </MetadataListItem>
+                  <MetadataListItem label="Connection Status">
+                    <OrderStatusPill status={record.connectionStatus ?? 'Active'} />
+                  </MetadataListItem>
+                  <MetadataListItem label="Deposit Refund">
+                    <HStack gap={1.5} vAlign="center" wrap="wrap">
+                      <Token
+                        size="sm"
+                        color={getRefundTokenColor(record.refundStatus)}
+                        label={record.refundStatus || 'None'}
+                      />
+                      {(record.refundAmount ?? 0) > 0 && (
+                        <Text weight="semibold" hasTabularNumbers>
+                          {formatUsd(record.refundAmount ?? 0)}
+                        </Text>
+                      )}
+                      {record.refundedAt && (
+                        <Text type="supporting">
+                          <Timestamp value={record.refundedAt} format="date_time" timezoneID="UTC" />
+                        </Text>
+                      )}
+                    </HStack>
+                  </MetadataListItem>
                 </MetadataList>
 
                 <Divider />
@@ -274,7 +541,7 @@ export function BillingAccountDrawer({
                           <Text type="supporting">Initial Billing Cycle</Text>
                         )}
                       </MetadataListItem>
-                      <MetadataListItem label="Plan Advance Rental">
+                      <MetadataListItem label="Plan Rental">
                         <Text weight="semibold">
                           {formatUsd(record.rentalAmount ?? record.amount)}
                         </Text>
@@ -295,7 +562,7 @@ export function BillingAccountDrawer({
                                 .join(' · ')}
                             </Text>
                           ) : null}
-                        </VStack>
+              </VStack>
                       </MetadataListItem>
                       <MetadataListItem label="Damaged Equipment Fee">
                         <Text weight="semibold">
@@ -342,7 +609,7 @@ export function BillingAccountDrawer({
                       </MetadataListItem>
                     </MetadataList>
                   </Card>
-                </VStack>
+              </VStack>
 
                 {/* Form to Generate Next / Custom Invoice */}
                 {record.status === 'NotBilled' || showInvoiceForm ? (
@@ -378,15 +645,31 @@ export function BillingAccountDrawer({
                                 placeholder="0"
                                 inputMode="numeric"
                                 value={localMins}
-                                onChange={setLocalMins}
-                                description="Unlimited on local plans; $0.55/min beyond base."
+                                onChange={(val) => {
+                                  setLocalMins(val);
+                                  setInvoiceErrors((prev) => ({ ...prev, localMins: undefined }));
+                                }}
+                                status={
+                                  invoiceErrors.localMins
+                                    ? { type: 'error', message: invoiceErrors.localMins }
+                                    : undefined
+                                }
+                                description="Per-minute local call charge per subscriber plan tariff."
                               />
                               <TextInput
                                 label="STD Call Minutes"
                                 placeholder="0"
                                 inputMode="numeric"
                                 value={stdMins}
-                                onChange={setStdMins}
+                                onChange={(val) => {
+                                  setStdMins(val);
+                                  setInvoiceErrors((prev) => ({ ...prev, stdMins: undefined }));
+                                }}
+                                status={
+                                  invoiceErrors.stdMins
+                                    ? { type: 'error', message: invoiceErrors.stdMins }
+                                    : undefined
+                                }
                                 description="Per-minute tariff for STD inter-city trunk calls."
                               />
                               <TextInput
@@ -394,7 +677,15 @@ export function BillingAccountDrawer({
                                 placeholder="0"
                                 inputMode="numeric"
                                 value={mobileMins}
-                                onChange={setMobileMins}
+                                onChange={(val) => {
+                                  setMobileMins(val);
+                                  setInvoiceErrors((prev) => ({ ...prev, mobileMins: undefined }));
+                                }}
+                                status={
+                                  invoiceErrors.mobileMins
+                                    ? { type: 'error', message: invoiceErrors.mobileMins }
+                                    : undefined
+                                }
                                 description="Fixed-to-mobile minutes tariff."
                               />
                             </>
@@ -404,8 +695,48 @@ export function BillingAccountDrawer({
                             placeholder="0.00"
                             inputMode="decimal"
                             value={equipFee}
-                            onChange={setEquipFee}
+                            onChange={(val) => {
+                              setEquipFee(val);
+                              setInvoiceErrors((prev) => ({ ...prev, equipFee: undefined }));
+                            }}
+                            status={
+                              invoiceErrors.equipFee
+                                ? { type: 'error', message: invoiceErrors.equipFee }
+                                : undefined
+                            }
                             description="Fee for customer-damaged modems, routers, or wiring."
+                          />
+                          <CheckboxInput
+                            label="Include Refundable Security Deposit"
+                            description="First invoice includes deposit by default; uncheck to omit or check to include on subsequent cycles."
+                            value={includeDeposit}
+                            onChange={setIncludeDeposit}
+                          />
+                          <DateInput
+                            label="Billing Period Start (Optional)"
+                            description="Defaults to current UTC date if omitted."
+                            value={periodStart}
+                            onChange={(val) => {
+                              setPeriodStart(val);
+                              setInvoiceErrors((prev) => ({ ...prev, periodEnd: undefined }));
+                            }}
+                            hasClear
+                          />
+                          <DateInput
+                            label="Billing Period End (Optional)"
+                            description="Defaults from plan validity cycle if omitted."
+                            value={periodEnd}
+                            min={periodStart}
+                            onChange={(val) => {
+                              setPeriodEnd(val);
+                              setInvoiceErrors((prev) => ({ ...prev, periodEnd: undefined }));
+                            }}
+                            status={
+                              invoiceErrors.periodEnd
+                                ? { type: 'error', message: invoiceErrors.periodEnd }
+                                : undefined
+                            }
+                            hasClear
                           />
                         </FormLayout>
 
@@ -418,7 +749,7 @@ export function BillingAccountDrawer({
                             isDisabled={actionLoading}
                           />
                         </HStack>
-                      </VStack>
+              </VStack>
                     </form>
                   </Card>
                 ) : null}
@@ -443,8 +774,17 @@ export function BillingAccountDrawer({
                             label="Payment Amount ($)"
                             placeholder={String(effectiveDue)}
                             inputMode="decimal"
-                            value={paymentAmount || String(effectiveDue)}
-                            onChange={setPaymentAmount}
+                            hasClear
+                            value={paymentAmount}
+                            onChange={(val) => {
+                              setPaymentAmount(val);
+                              if (paymentAmountError) setPaymentAmountError(null);
+                            }}
+                            status={
+                              paymentAmountError
+                                ? { type: 'error', message: paymentAmountError }
+                                : undefined
+                            }
                             description={`Total balance due is ${formatUsd(effectiveDue)}. Supports partial payment.`}
                             isRequired
                           />
@@ -466,28 +806,118 @@ export function BillingAccountDrawer({
                             isDisabled={actionLoading}
                           />
                         </HStack>
-                      </VStack>
+              </VStack>
                     </form>
                   </Card>
                 ) : null}
 
+                {/* Disburse Security Deposit Refund Form */}
+                {canDisburseRefund && showRefundForm ? (
+                  <Card padding={4}>
+                    <form onSubmit={(e) => void handleRefundSubmit(e)}>
+                      <VStack gap={3}>
+                        <HStack hAlign="between" vAlign="center">
+                          <Heading level={4}>Disburse Security Deposit Refund</Heading>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            label="Cancel"
+                            onClick={() => setShowRefundForm(false)}
+                          />
+                        </HStack>
+                        <Text type="supporting">
+                          {`Connection is Permanently Inactive. Confirm refund payout of ${formatUsd(record.refundAmount ?? 0)} to the subscriber.`}
+                        </Text>
+                        <FormLayout>
+                          <TextInput
+                            label="Refund Disbursement Note (Optional)"
+                            placeholder="e.g. Cheque #8901, Counter refund payout"
+                            value={refundNote}
+                            onChange={setRefundNote}
+                            status={
+                              refundNote.trim().length > 500
+                                ? {
+                                    type: 'error',
+                                    message: 'Refund note must be 500 characters or fewer.',
+                                  }
+                                : undefined
+                            }
+                            isOptional
+                          />
+                        </FormLayout>
+                        <HStack hAlign="end" gap={2}>
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            label="Confirm Refund Disbursement"
+                            isLoading={actionLoading}
+                            isDisabled={actionLoading}
+                          />
+                        </HStack>
+              </VStack>
+                    </form>
+                  </Card>
+                ) : null}
+
+                {/* Invoice History Table */}
+                <VStack gap={3}>
+                  <Heading level={4}>Invoice History</Heading>
+                  {invoiceRows.length > 0 ? (
+                    <VStack gap={3}>
+                      <Table<InvoiceItemView & Record<string, unknown>>
+                        aria-label="Account Invoice History Table"
+                        density="compact"
+                        columns={invoiceColumns}
+                        data={invoicePagination.paginatedItems}
+                        rowIndexStart={invoicePagination.rowIndexStart}
+                        rowCount={invoicePagination.totalItems}
+                        idKey="id"
+                      />
+                      <TablePaginationFooter
+                        page={invoicePagination.page}
+                        pageSize={invoicePagination.pageSize}
+                        totalItems={invoicePagination.totalItems}
+                        onPageChange={invoicePagination.setPage}
+                        onPageSizeChange={invoicePagination.setPageSize}
+                        label="Invoice history pagination"
+                      />
+              </VStack>
+                  ) : (
+                    <Card padding={4} variant="muted">
+                      <Text type="supporting">No invoices generated for this account yet.</Text>
+                    </Card>
+                  )}
+              </VStack>
+
                 {/* Payment History Table */}
                 <VStack gap={3}>
                   <Heading level={4}>Payment Collection History</Heading>
-                  {record.payments && record.payments.length > 0 ? (
-                    <Table<PaymentItemView & Record<string, unknown>>
-                      aria-label="Payment Transactions Table"
-                      density="compact"
-                      columns={paymentColumns}
-                      data={record.payments as unknown as (PaymentItemView & Record<string, unknown>)[]}
-                      idKey="id"
-                    />
+                  {paymentRows.length > 0 ? (
+                    <VStack gap={3}>
+                      <Table<PaymentItemView & Record<string, unknown>>
+                        aria-label="Payment Transactions Table"
+                        density="compact"
+                        columns={paymentColumns}
+                        data={paymentPagination.paginatedItems}
+                        rowIndexStart={paymentPagination.rowIndexStart}
+                        rowCount={paymentPagination.totalItems}
+                        idKey="id"
+                      />
+                      <TablePaginationFooter
+                        page={paymentPagination.page}
+                        pageSize={paymentPagination.pageSize}
+                        totalItems={paymentPagination.totalItems}
+                        onPageChange={paymentPagination.setPage}
+                        onPageSizeChange={paymentPagination.setPageSize}
+                        label="Payment history pagination"
+                      />
+              </VStack>
                   ) : (
                     <Card padding={4} variant="muted">
                       <Text type="supporting">No payment transactions recorded for this account yet.</Text>
                     </Card>
                   )}
-                </VStack>
+              </VStack>
 
                 <Divider />
 
@@ -524,6 +954,15 @@ export function BillingAccountDrawer({
                     description="All outstanding balances are fully paid and reconciled."
                   />
                 )}
+                {record.refundStatus === 'Refunded' ? (
+                  <Banner
+                    status="success"
+                    container="section"
+                    collapsible={false}
+                    title="Security Deposit Refunded"
+                    description={`Refunded ${formatUsd(record.refundAmount ?? 0)} upon permanent connection termination.`}
+                  />
+                ) : null}
               </VStack>
             ) : (
               <VStack gap={4}>
@@ -563,7 +1002,13 @@ export function BillingAccountDrawer({
                     label="Generate Bill"
                     isLoading={actionLoading}
                     isDisabled={actionLoading || isLoading}
-                    onClick={() => setShowInvoiceForm(true)}
+                    onClick={() => {
+                      setIncludeDeposit((record.invoices?.length ?? 0) === 0);
+                      setPeriodStart(undefined);
+                      setPeriodEnd(undefined);
+                      setInvoiceErrors({});
+                      setShowInvoiceForm(true);
+                    }}
                   />
                 ) : null}
                 {record && record.status !== 'NotBilled' && onCreateBill && !showInvoiceForm ? (
@@ -572,7 +1017,22 @@ export function BillingAccountDrawer({
                     label="Next Period Bill"
                     isLoading={actionLoading}
                     isDisabled={actionLoading || isLoading}
-                    onClick={() => setShowInvoiceForm(true)}
+                    onClick={() => {
+                      setIncludeDeposit(false);
+                      setPeriodStart(undefined);
+                      setPeriodEnd(undefined);
+                      setInvoiceErrors({});
+                      setShowInvoiceForm(true);
+                    }}
+                  />
+                ) : null}
+                {canDisburseRefund && !showRefundForm ? (
+                  <Button
+                    variant="secondary"
+                    label="Disburse Refund"
+                    isLoading={actionLoading}
+                    isDisabled={actionLoading || isLoading}
+                    onClick={() => setShowRefundForm(true)}
                   />
                 ) : null}
                 {record && (record.status === 'Unpaid' || record.status === 'PartiallyPaid') && onRecordPayment && !showPaymentForm ? (
@@ -583,6 +1043,7 @@ export function BillingAccountDrawer({
                     isDisabled={actionLoading || isLoading}
                     onClick={() => {
                       setPaymentAmount(String(effectiveDue));
+                      setPaymentAmountError(null);
                       setShowPaymentForm(true);
                     }}
                   />

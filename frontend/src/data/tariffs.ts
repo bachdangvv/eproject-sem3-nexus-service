@@ -41,30 +41,82 @@ export const BULK_DISCOUNT_TIERS: BulkDiscountTier[] = [
     minConnections: 10,
     maxConnections: 14,
     discountPercent: 25,
-    appliesTo: '25% off Advance & Security Deposit',
+    appliesTo: '25% off Plan Rental & Security Deposit',
   },
   {
     rangeLabel: '15–24 connections',
     minConnections: 15,
     maxConnections: 24,
     discountPercent: 50,
-    appliesTo: '50% off Advance & Security Deposit',
+    appliesTo: '50% off Plan Rental & Security Deposit',
   },
   {
     rangeLabel: '25–50 connections',
     minConnections: 25,
     maxConnections: 50,
     discountPercent: 75,
-    appliesTo: '75% off Advance & Security Deposit',
+    appliesTo: '75% off Plan Rental & Security Deposit',
   },
   {
     rangeLabel: 'Above 50 connections',
     minConnections: 51,
     maxConnections: null,
     discountPercent: 100,
-    appliesTo: '100% off Advance & Security Deposit',
+    appliesTo: '100% off Plan Rental & Security Deposit',
   },
 ];
+
+export const VALIDITY_MONTH_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '1', label: 'Monthly (1 month)' },
+  { value: '3', label: 'Quarterly (3 months)' },
+  { value: '6', label: 'Half-Yearly (6 months)' },
+  { value: '12', label: 'Yearly (12 months)' },
+];
+
+export function formatValidityLabel(validityMonths?: number | null): string {
+  switch (validityMonths) {
+    case 1:
+      return '1 Month';
+    case 3:
+      return '3 Months';
+    case 6:
+      return '6 Months';
+    case 12:
+      return '1 Year';
+    default:
+      return '1 Month';
+  }
+}
+
+export function formatPlanCycleLabel(validityMonths?: number | null): string {
+  switch (validityMonths) {
+    case 1:
+      return 'Monthly';
+    case 3:
+      return 'Quarterly (3 mo)';
+    case 6:
+      return 'Half-Yearly (6 mo)';
+    case 12:
+      return 'Yearly (12 mo)';
+    default:
+      return 'Per Cycle';
+  }
+}
+
+export function formatPlanCycleSuffix(validityMonths?: number | null): string {
+  switch (validityMonths) {
+    case 1:
+      return '/mo';
+    case 3:
+      return '/3 mo';
+    case 6:
+      return '/6 mo';
+    case 12:
+      return '/yr';
+    default:
+      return '/cycle';
+  }
+}
 
 export function getBulkDiscountPercent(connectionCount: number): number {
   const qty = Math.max(1, Math.floor(connectionCount || 1));
@@ -83,6 +135,13 @@ export function formatUsd(value: number): string {
   return `$${roundUsd(value).toFixed(2)}`;
 }
 
+export function formatPlanPriceWithCycle(
+  price: number,
+  validityMonths?: number | null,
+): string {
+  return `${formatUsd(price)}${formatPlanCycleSuffix(validityMonths)}`;
+}
+
 export function computeBillAmounts(params: {
   connectionType: ConnectionType;
   planRentalUsd: number;
@@ -91,7 +150,7 @@ export function computeBillAmounts(params: {
   usageChargesUsd: number;
   equipmentReplacementUsd: number;
   previousArrearsUsd: number;
-  advanceAdjustmentUsd: number;
+  adjustmentUsd?: number;
 }) {
   const qty = Math.max(1, Math.floor(params.connectionCount || 1));
   const discountPercent = getBulkDiscountPercent(qty);
@@ -99,7 +158,7 @@ export function computeBillAmounts(params: {
   const securityDepositGrossUsd = roundUsd(depositPerLine * qty);
   const rentalTotalUsd = roundUsd(params.planRentalUsd * qty);
 
-  // Bulk discount applies to advance rental and security deposit
+  // Bulk discount applies to plan rental and security deposit
   const discountOnRental = roundUsd((rentalTotalUsd * discountPercent) / 100);
   const discountOnDeposit = roundUsd((securityDepositGrossUsd * discountPercent) / 100);
   const bulkDiscountAmountUsd = roundUsd(discountOnRental + discountOnDeposit);
@@ -119,7 +178,7 @@ export function computeBillAmounts(params: {
       serviceTaxUsd +
       netDepositUsd +
       params.previousArrearsUsd +
-      params.advanceAdjustmentUsd,
+      (params.adjustmentUsd ?? 0),
   );
 
   return {

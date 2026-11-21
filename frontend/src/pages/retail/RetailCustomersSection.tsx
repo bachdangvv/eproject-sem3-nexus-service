@@ -1,3 +1,6 @@
+/**
+ * Retail customer onboarding, profile editor, and Document Archive workspace section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -13,6 +16,7 @@ import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
 import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
@@ -25,9 +29,11 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { ApiErrorBanner, CopyableId, CustomerStatusPill } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
+import { RoutePath, useRouter } from '../../router/router';
 import { getCities } from '../../services/catalogApi';
 import { createCustomer, getCustomers, updateCustomer } from '../../services/operationsApi';
 import type { CityView, CustomerInput, CustomerStatus, CustomerView } from '../../types/nexus';
+import { DocumentsSection } from '../shared/DocumentsSection';
 import {
   CITY_CODE_REGEX,
   CUSTOMER_STATUS_OPTIONS,
@@ -150,8 +156,11 @@ export function RetailCustomersSection({
   refreshTrigger,
   onCountChange,
   onRefreshingChange,
-}: RetailSectionProps): JSX.Element {
+  initialView = 'directory',
+}: RetailSectionProps & { initialView?: 'directory' | 'documents' }): JSX.Element {
   const toast = useToast();
+  const { navigate } = useRouter();
+  const viewMode = initialView;
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -521,7 +530,32 @@ export function RetailCustomersSection({
   ];
 
   return (
-    <Card padding={6}>
+    <VStack gap={4}>
+      <HStack hAlign="between" vAlign="center" wrap="wrap" gap={3}>
+        <SegmentedControl
+          label="Retail customer workspace view"
+          value={viewMode}
+          onChange={(val) => {
+            const next = val as 'directory' | 'documents';
+            navigate(
+              next === 'documents' ? RoutePath.RETAIL_DOCUMENTS : RoutePath.RETAIL_CUSTOMERS,
+            );
+          }}
+        >
+          <SegmentedControlItem value="directory" label="Customer Directory" />
+          <SegmentedControlItem value="documents" label="Document Archive" />
+        </SegmentedControl>
+      </HStack>
+
+      {viewMode === 'documents' ? (
+        <DocumentsSection
+          portalRole="Retail"
+          refreshTrigger={refreshTrigger}
+          onCountChange={onCountChange}
+          onRefreshingChange={onRefreshingChange}
+        />
+      ) : (
+        <Card padding={6}>
       <VStack gap={5}>
         <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
           <HStack gap={3} vAlign="end" wrap="wrap">
@@ -1139,6 +1173,8 @@ export function RetailCustomersSection({
           }
         />
       </Drawer>
-    </Card>
+        </Card>
+      )}
+    </VStack>
   );
 }

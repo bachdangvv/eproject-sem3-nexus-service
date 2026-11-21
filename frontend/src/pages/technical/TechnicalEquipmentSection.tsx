@@ -1,8 +1,12 @@
+/**
+ * Technical equipment inventory stock management and customer-damaged incident logging section.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Drawer, DrawerHeader } from '@astryxdesign/core/Drawer';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { FormLayout } from '@astryxdesign/core/FormLayout';
@@ -29,6 +33,7 @@ import {
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
+import { updateProduct } from '../../services/catalogApi';
 import {
   getEquipmentIncidents,
   getTechnicalEquipment,
@@ -101,6 +106,15 @@ export function TechnicalEquipmentSection({
   const [replacementFee, setReplacementFee] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // Technical product edit dialog state (DOC1-ROL-004 P64)
+  const [editingEquipment, setEditingEquipment] = useState<EquipmentStockView | null>(null);
+  const [editEqName, setEditEqName] = useState('');
+  const [editEqDescription, setEditEqDescription] = useState('');
+  const [editEqStockText, setEditEqStockText] = useState('0');
+  const [editEqFeeText, setEditEqFeeText] = useState('0.00');
+  const [editEqError, setEditEqError] = useState<string | null>(null);
+  const [savingEqEdit, setSavingEqEdit] = useState(false);
+
   const isMountedRef = useRef(true);
   const requestSeqRef = useRef(0);
   const hasLoadedOnceRef = useRef(false);
@@ -136,9 +150,6 @@ export function TechnicalEquipmentSection({
         setEquipment(eqData);
         setIncidents(incData);
         setConnectedOrders(connOrders);
-
-        const pendingIncidents = incData.filter((i) => !i.settled).length;
-        onCountChange(pendingIncidents);
       } catch (err) {
         if (!isMountedRef.current || seq !== requestSeqRef.current) return;
         const msg = extractErrorMessage(err, 'Failed to load technical equipment and incidents.');
@@ -152,7 +163,7 @@ export function TechnicalEquipmentSection({
         }
       }
     },
-    [onCountChange, onRefreshingChange],
+    [onRefreshingChange],
   );
 
   useEffect(() => {
@@ -169,6 +180,15 @@ export function TechnicalEquipmentSection({
       cancelled = true;
     };
   }, [loadData, refreshTrigger]);
+
+  useEffect(() => {
+    if (equipmentLoading && incidentsLoading) return;
+    const count =
+      activeTab === 'inventory'
+        ? equipment.length
+        : incidents.filter((i) => !i.settled).length;
+    onCountChange(count);
+  }, [activeTab, equipment.length, equipmentLoading, incidents, incidentsLoading, onCountChange]);
 
   // Filtered equipment inventory
   const filteredEquipment = useMemo<EquipmentRow[]>(() => {
@@ -300,9 +320,10 @@ export function TechnicalEquipmentSection({
       errors.description = 'Provide a descriptive condition of the damaged equipment (min 5 characters).';
     }
 
-    const feeNum = parseFloat(replacementFee);
-    if (isNaN(feeNum) || feeNum < 0) {
-      errors.replacementFee = 'Enter a valid non-negative replacement fee.';
+    const trimmedFee = replacementFee.trim();
+    const feeNum = /^\d+(\.\d{1,2})?$/.test(trimmedFee) ? Number(trimmedFee) : NaN;
+    if (!Number.isFinite(feeNum) || feeNum < 0 || feeNum > 9999999.99) {
+      errors.replacementFee = 'Enter a valid replacement fee ($0.00 to $9,999,999.99, up to 2 decimals).';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -352,6 +373,61 @@ export function TechnicalEquipmentSection({
     const pendingIncidentsCount = incidents.filter((i) => !i.settled).length;
     return { totalSkus, totalStock, lowStockCount, pendingIncidentsCount };
   }, [equipment, incidents]);
+
+  const openEditEquipmentDialog = (item: EquipmentStockView) => {
+    setEditingEquipment(item);
+    setEditEqName(item.name);
+    setEditEqDescription(item.description ?? '');
+    setEditEqStockText(String(item.quantityInStock ?? 0));
+    setEditEqFeeText(String(item.replacementPrice ?? 0));
+    setEditEqError(null);
+  };
+
+  const handleSaveEquipmentEdit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingEquipment || savingEqEdit) return;
+    const trimmedName = editEqName.trim();
+    if (!trimmedName || trimmedName.length > 100) {
+      setEditEqError('Equipment name is required (1–100 characters).');
+      return;
+    }
+    if (editEqDescription.trim().length > 240) {
+      setEditEqError('Description must be 240 characters or fewer.');
+      return;
+    }
+    const trimmedStock = editEqStockText.trim();
+    const stockVal = /^\d+$/.test(trimmedStock) ? Number(trimmedStock) : NaN;
+    if (!Number.isSafeInteger(stockVal) || stockVal < 0 || stockVal > 100000) {
+      setEditEqError('Stock quantity must be a whole integer between 0 and 100,000.');
+      return;
+    }
+    const trimmedFee = editEqFeeText.trim();
+    const feeVal = /^\d+(\.\d{1,2})?$/.test(trimmedFee) ? Number(trimmedFee) : NaN;
+    if (!Number.isFinite(feeVal) || feeVal < 0 || feeVal > 9999999.99) {
+      setEditEqError('Replacement fee must be between $0.00 and $9,999,999.99 (up to 2 decimals).');
+      return;
+    }
+    setSavingEqEdit(true);
+    setEditEqError(null);
+    try {
+      const updated = await updateProduct(editingEquipment.id, {
+        name: trimmedName,
+        description: editEqDescription.trim() || null,
+        active: editingEquipment.active,
+        quantityInStock: stockVal,
+        replacementPrice: feeVal,
+      });
+      if (!isMountedRef.current) return;
+      setEditingEquipment(null);
+      toast({ body: `Updated hardware equipment "${updated.name}".` });
+      void loadData(true);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setEditEqError(extractErrorMessage(err, 'Could not update equipment details.'));
+    } finally {
+      if (isMountedRef.current) setSavingEqEdit(false);
+    }
+  };
 
   // Equipment table columns
   const equipmentColumns: TableColumn<EquipmentRow>[] = [
@@ -413,6 +489,20 @@ export function TechnicalEquipmentSection({
           size="sm"
           color={row.active ? 'green' : 'gray'}
           label={row.active ? 'Active' : 'Archived'}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      width: pixel(110),
+      align: 'end',
+      renderCell: (row) => (
+        <Button
+          size="sm"
+          variant="secondary"
+          label="Edit"
+          onClick={() => openEditEquipmentDialog(row)}
         />
       ),
     },
@@ -878,17 +968,100 @@ export function TechnicalEquipmentSection({
                   onClick={handleCloseDrawer}
                 />
                 <Button
+                  type="submit"
+                  form="record-incident-form"
                   variant="primary"
                   label="Log Incident & Charge Fee"
                   isLoading={submittingIncident}
                   isDisabled={submittingIncident}
-                  onClick={(e) => void handleSubmitIncident(e)}
                 />
               </HStack>
             </LayoutFooter>
           }
         />
       </Drawer>
+
+      <Dialog
+        isOpen={editingEquipment !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingEqEdit) setEditingEquipment(null);
+        }}
+        purpose="form"
+        width={480}
+      >
+        <Layout
+          header={
+            <DialogHeader
+              title={editingEquipment ? `Edit Equipment: ${editingEquipment.name}` : 'Edit Equipment'}
+              subtitle="Update hardware model details, stock quantity, and replacement fee."
+              onOpenChange={(open) => {
+                if (!open && !savingEqEdit) setEditingEquipment(null);
+              }}
+            />
+          }
+          content={
+            <LayoutContent>
+              <VStack gap={4}>
+                <ApiErrorBanner
+                  title="Could not update equipment"
+                  error={editEqError}
+                  onDismiss={() => setEditEqError(null)}
+                />
+                <form id="edit-technical-equipment-form" onSubmit={(e) => void handleSaveEquipmentEdit(e)}>
+                  <FormLayout>
+                    <TextInput
+                      label="Product Name"
+                      isRequired
+                      value={editEqName}
+                      onChange={setEditEqName}
+                    />
+                    <TextArea
+                      label="Description"
+                      rows={3}
+                      value={editEqDescription}
+                      onChange={setEditEqDescription}
+                    />
+                    <TextInput
+                      label="Quantity in Stock"
+                      inputMode="numeric"
+                      isRequired
+                      value={editEqStockText}
+                      onChange={setEditEqStockText}
+                    />
+                    <TextInput
+                      label="Replacement Price ($)"
+                      inputMode="decimal"
+                      isRequired
+                      value={editEqFeeText}
+                      onChange={setEditEqFeeText}
+                    />
+                  </FormLayout>
+                </form>
+              </VStack>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack hAlign="end" gap={2}>
+                <Button
+                  variant="ghost"
+                  label="Cancel"
+                  isDisabled={savingEqEdit}
+                  onClick={() => setEditingEquipment(null)}
+                />
+                <Button
+                  type="submit"
+                  form="edit-technical-equipment-form"
+                  variant="primary"
+                  label="Save Changes"
+                  isLoading={savingEqEdit}
+                  isDisabled={savingEqEdit}
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
     </VStack>
   );
 }

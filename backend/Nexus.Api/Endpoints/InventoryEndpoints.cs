@@ -4,8 +4,10 @@ using Nexus.Domain;
 
 namespace Nexus.Api.Endpoints;
 
+/// <summary>Minimal API endpoints for retail shops, vendors, purchase orders, vendor payments, and technical equipment.</summary>
 public static class InventoryEndpoints
 {
+    /// <summary>Maps retail shop, vendor, procurement, and technical equipment/incident endpoints.</summary>
     public static void MapInventory(this RouteGroupBuilder api)
     {
         var admin = api.MapGroup("").RequireAuthorization(policy => policy.RequireRole(Roles.Admin));
@@ -14,7 +16,7 @@ public static class InventoryEndpoints
 
         // Retail shops lookup (authenticated for staff)
         api.MapGet("/retail-shops", (string? cityCode, InventoryService service) =>
-            service.RetailShopsAsync(cityCode, false)).RequireAuthorization();
+            service.RetailShopsAsync(cityCode, false)).RequireAuthorization(policy => policy.RequireRole(Roles.Staff));
 
         // Admin Retail shops CRUD
         admin.MapGet("/admin/retail-shops", (string? cityCode, InventoryService service) =>
@@ -60,12 +62,12 @@ public static class InventoryEndpoints
         // Technical Equipment Overview & Incidents
         technicalOrAdmin.MapGet("/technical/equipment", (InventoryService service) =>
             service.EquipmentStockAsync());
+        technicalOrAdmin.MapGet("/technical/equipment/summary", (InventoryService service) =>
+            service.EquipmentSummaryAsync());
         technicalOrAdmin.MapGet("/technical/incidents", (bool? settled, InventoryService service) =>
             service.IncidentsAsync(settled));
 
         technical.MapPost("/technical/incidents", async (EquipmentIncidentInput input, InventoryService service, ClaimsPrincipal actor) =>
-            Results.Json(await service.RecordIncidentAsync(input, ActorId(actor)), statusCode: 201));
+            Results.Json(await service.RecordIncidentAsync(input, EndpointHelpers.ActorId(actor)), statusCode: 201));
     }
-
-    private static int ActorId(ClaimsPrincipal actor) => int.Parse(actor.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

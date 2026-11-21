@@ -1,3 +1,6 @@
+/**
+ * Shared types, metadata, regex constants, and validation helpers for the Admin Portal sections.
+ */
 import {
   ApiError,
   type CityView,
@@ -9,7 +12,7 @@ import {
   type PurchaseOrderView,
   type RetailShopView,
   type ServiceTypeCode,
-  type UserRole,
+  type StaffRole,
   type VendorPaymentMethod,
   type VendorPaymentView,
   type VendorView,
@@ -24,7 +27,10 @@ export type AdminSection =
   | 'retail-shops'
   | 'vendors'
   | 'purchases'
-  | 'vendor-payments';
+  | 'vendor-payments'
+  | 'documents'
+  | 'plan-changes'
+  | 'queries';
 
 export type PlanRow = PlanView & Record<string, unknown>;
 export type ProductRow = ProductView & Record<string, unknown>;
@@ -99,6 +105,24 @@ export const ADMIN_SECTION_META: Record<AdminSection, AdminSectionMeta> = {
     subtitle: 'Record and track disbursements, bank transfers, cheques, and cash payments for purchase orders.',
     countLabel: 'payments',
   },
+  documents: {
+    title: 'Customer Document Archival',
+    tokenLabel: 'Documents',
+    subtitle: 'Archive, filter by year and territory city, and inspect customer KYC and billing documents.',
+    countLabel: 'documents',
+  },
+  'plan-changes': {
+    title: 'Plan Change Requests',
+    tokenLabel: 'Plan Changes',
+    subtitle: 'Review subscriber tariff upgrade or migration requests and approve or reject pending transitions.',
+    countLabel: 'requests',
+  },
+  queries: {
+    title: 'Customer Queries & FAQ Catalog',
+    tokenLabel: 'Queries & FAQ',
+    subtitle: 'Log customer inquiries, publish official answers, promote topics to the dynamic FAQ catalog, and close resolved tickets.',
+    countLabel: 'queries',
+  },
 };
 
 export interface AdminSectionProps {
@@ -109,8 +133,12 @@ export interface AdminSectionProps {
 
 export const CITY_CODE_REGEX = /^[0-9]{3}$/;
 export const USERNAME_REGEX = /^[a-zA-Z0-9._-]{3,40}$/;
+export const SHOP_VENDOR_CODE_REGEX = /^[A-Za-z0-9._-]{2,30}$/;
+export const STAFF_PHONE_REGEX = /^\+?[0-9]{7,15}$/;
 export const PRICE_DECIMAL_REGEX = /^\d+(\.\d{1,2})?$/;
 export const MAX_PLAN_PRICE = 9999999999.99;
+export const MAX_UNIT_PRICE = 9999999.99;
+export const MAX_STOCK_QUANTITY = 100000;
 
 export const SERVICE_TYPE_OPTIONS: Array<{ value: ServiceTypeCode; label: string }> = [
   { value: 'D', label: 'Dial-Up (D)' },
@@ -118,7 +146,7 @@ export const SERVICE_TYPE_OPTIONS: Array<{ value: ServiceTypeCode; label: string
   { value: 'T', label: 'Landline (T)' },
 ];
 
-export const STAFF_ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
+export const STAFF_ROLE_OPTIONS: Array<{ value: StaffRole; label: string }> = [
   { value: 'Admin', label: 'Admin' },
   { value: 'Retail', label: 'Retail' },
   { value: 'Technical', label: 'Technical' },
@@ -143,7 +171,7 @@ export function validatePlanPrice(raw: string):
   | { valid: false; message: string } {
   const trimmed = raw.trim();
   if (!trimmed) {
-    return { valid: false, message: 'Monthly price is required.' };
+    return { valid: false, message: 'Cycle price is required.' };
   }
   if (!PRICE_DECIMAL_REGEX.test(trimmed)) {
     return {
@@ -184,7 +212,11 @@ export function validatePositiveDecimal(raw: string, label: string):
   return { valid: true, value: parsed };
 }
 
-export function validatePositiveInteger(raw: string, label: string):
+export function validatePositiveInteger(
+  raw: string,
+  label: string,
+  max = MAX_STOCK_QUANTITY,
+):
   | { valid: true; value: number }
   | { valid: false; message: string } {
   const trimmed = raw.trim();
@@ -200,6 +232,35 @@ export function validatePositiveInteger(raw: string, label: string):
   const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     return { valid: false, message: `${label} must be 0 or greater.` };
+  }
+  if (parsed > max) {
+    return { valid: false, message: `${label} must not exceed ${max.toLocaleString()}.` };
+  }
+  return { valid: true, value: parsed };
+}
+
+export function validateUnitPrice(
+  raw: string,
+  label = 'Unit Price',
+):
+  | { valid: true; value: number }
+  | { valid: false; message: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { valid: false, message: `${label} is required.` };
+  }
+  if (!PRICE_DECIMAL_REGEX.test(trimmed)) {
+    return {
+      valid: false,
+      message: `Enter a valid ${label.toLowerCase()} ($0.01 or greater) with up to two decimal places.`,
+    };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0.01) {
+    return { valid: false, message: `${label} must be at least $0.01.` };
+  }
+  if (parsed > MAX_UNIT_PRICE) {
+    return { valid: false, message: `${label} must not exceed 9,999,999.99.` };
   }
   return { valid: true, value: parsed };
 }

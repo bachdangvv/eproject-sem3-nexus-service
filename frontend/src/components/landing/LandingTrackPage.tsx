@@ -1,3 +1,6 @@
+/**
+ * Public zero-PII order and account status tracking page (/track).
+ */
 import { useCallback, useState, type FormEvent, type JSX } from 'react';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -15,6 +18,7 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   CopyableId,
+  formatUsd,
   OrderLifecycleStepper,
   OrderStatusPill,
   ServiceTypeToken,
@@ -191,6 +195,13 @@ export function LandingTrackPage(): JSX.Element {
               <MetadataListItem label="City Code">
                 <Text weight="semibold">City {trackResult.cityCode}</Text>
               </MetadataListItem>
+              {trackResult.type === 'account' && trackResult.dueAmount != null && (
+                <MetadataListItem label="Balance Due">
+                  <Text weight="semibold" hasTabularNumbers>
+                    {formatUsd(trackResult.dueAmount)}
+                  </Text>
+                </MetadataListItem>
+              )}
             </MetadataList>
           </VStack>
         </Card>

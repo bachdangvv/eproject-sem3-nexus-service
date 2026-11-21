@@ -1,4 +1,8 @@
 /* oxlint-disable react/only-export-components */
+/**
+ * Shared status pills, copyable identifiers, order detail drawer, and error/offline banners.
+ */
+import { useState, type FormEvent } from 'react';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -6,6 +10,7 @@ import { Code } from '@astryxdesign/core/Code';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Drawer, DrawerHeader } from '@astryxdesign/core/Drawer';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
+import { FormLayout } from '@astryxdesign/core/FormLayout';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
@@ -13,19 +18,24 @@ import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { Section } from '@astryxdesign/core/Section';
+import { Selector } from '@astryxdesign/core/Selector';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Step, Stepper } from '@astryxdesign/core/Stepper';
 import { Text } from '@astryxdesign/core/Text';
+import { TextArea } from '@astryxdesign/core/TextArea';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { useToast } from '@astryxdesign/core/Toast';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import type {
   BillingStatus,
+  CustomerQueryStatus,
   CustomerStatus,
+  FeedbackInput,
   OrderDetailView,
   OrderStatus,
+  PlanChangeStatus,
   PublicServiceType,
   ServiceTypeCode,
 } from '../types/nexus';
@@ -141,8 +151,14 @@ export function OrderStatusPill({ status }: { status: OrderStatus | string }) {
       return <StatusLabel variant="error" label="Not Feasible" />;
     case 'Connected':
       return <StatusLabel variant="success" label="Connected" />;
+    case 'Active':
+      return <StatusLabel variant="success" label="Active" />;
     case 'ACTIVE':
       return <StatusLabel variant="success" label="ACTIVE" />;
+    case 'TemporarilyInactive':
+      return <StatusLabel variant="warning" label="Temporarily Inactive" />;
+    case 'PermanentlyInactive':
+      return <StatusLabel variant="error" label="Permanently Inactive" />;
     default:
       return <StatusLabel variant="neutral" label={status} />;
   }
@@ -175,6 +191,32 @@ export function CustomerStatusPill({
   return <StatusLabel variant="neutral" label={status} />;
 }
 
+export function PlanChangeStatusPill({ status }: { status: PlanChangeStatus | string }) {
+  switch (status) {
+    case 'Approved':
+      return <StatusLabel variant="success" label="Approved" />;
+    case 'Rejected':
+      return <StatusLabel variant="error" label="Rejected" />;
+    case 'Pending':
+      return <StatusLabel variant="warning" label="Pending" />;
+    default:
+      return <StatusLabel variant="neutral" label={status} />;
+  }
+}
+
+export function QueryStatusPill({ status }: { status: CustomerQueryStatus | string }) {
+  switch (status) {
+    case 'Answered':
+      return <StatusLabel variant="success" label="Answered" />;
+    case 'Closed':
+      return <StatusLabel variant="neutral" label="Closed" />;
+    case 'Open':
+      return <StatusLabel variant="warning" label="Open" />;
+    default:
+      return <StatusLabel variant="neutral" label={status} />;
+  }
+}
+
 export function OrderLifecycleStepper({ status }: { status: OrderStatus | string }) {
   const activeStep =
     status === 'Pending'
@@ -182,6 +224,27 @@ export function OrderLifecycleStepper({ status }: { status: OrderStatus | string
       : status === 'Feasible' || status === 'NotFeasible'
         ? 1
         : 2;
+
+  const finalStepLabel =
+    status === 'TemporarilyInactive'
+      ? 'Temporarily Inactive'
+      : status === 'PermanentlyInactive'
+        ? 'Permanently Inactive'
+        : 'Connected';
+
+  const finalStepStatus =
+    status === 'TemporarilyInactive'
+      ? 'warning'
+      : status === 'PermanentlyInactive'
+        ? 'error'
+        : undefined;
+
+  const finalStepDescription =
+    status === 'TemporarilyInactive'
+      ? 'Service temporarily suspended'
+      : status === 'PermanentlyInactive'
+        ? 'Connection permanently terminated'
+        : '16-char Account ID active';
 
   return (
     <Stepper activeStep={activeStep} density="compact" label="Order workflow progress">
@@ -192,10 +255,23 @@ export function OrderLifecycleStepper({ status }: { status: OrderStatus | string
         status={status === 'NotFeasible' ? 'error' : undefined}
         description="Distance & server check"
       />
-      <Step step={2} label="Connected" description="16-char Account ID active" />
+      <Step
+        step={2}
+        label={finalStepLabel}
+        status={finalStepStatus}
+        description={finalStepDescription}
+      />
     </Stepper>
   );
 }
+
+const DRAWER_RATING_OPTIONS = [
+  { value: '5', label: '5 — Excellent' },
+  { value: '4', label: '4 — Very Good' },
+  { value: '3', label: '3 — Satisfactory' },
+  { value: '2', label: '2 — Fair' },
+  { value: '1', label: '1 — Needs Improvement' },
+];
 
 export function OrderDetailDrawer({
   detail,
@@ -203,15 +279,59 @@ export function OrderDetailDrawer({
   onOpenChange,
   isLoading = false,
   error = null,
+  onSubmitFeedback,
+  feedbackSubmitting = false,
+  feedbackError = null,
+  onDismissFeedbackError,
+  isSuspended = false,
 }: {
   detail: OrderDetailView | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   isLoading?: boolean;
   error?: string | null;
+  onSubmitFeedback?: (orderCode: string, input: FeedbackInput) => Promise<boolean | void>;
+  feedbackSubmitting?: boolean;
+  feedbackError?: string | null;
+  onDismissFeedbackError?: () => void;
+  isSuspended?: boolean;
 }) {
   const order = detail?.order ?? null;
   const req = order?.request ?? null;
+
+  const [drawerRating, setDrawerRating] = useState('5');
+  const [drawerComment, setDrawerComment] = useState('');
+  const [drawerCommentError, setDrawerCommentError] = useState<string | null>(null);
+  const [prevOrderCode, setPrevOrderCode] = useState<string | null>(order?.code ?? null);
+  if ((order?.code ?? null) !== prevOrderCode) {
+    setPrevOrderCode(order?.code ?? null);
+    setDrawerRating('5');
+    setDrawerComment('');
+    setDrawerCommentError(null);
+  }
+
+  const handleDrawerFeedbackSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!order || !onSubmitFeedback || feedbackSubmitting) return;
+    const trimmed = drawerComment.trim();
+    if (!trimmed) {
+      setDrawerCommentError('Please enter your service feedback comment.');
+      return;
+    }
+    if (trimmed.length > 600) {
+      setDrawerCommentError('Comment must be 600 characters or fewer.');
+      return;
+    }
+    setDrawerCommentError(null);
+    const result = await onSubmitFeedback(order.code, {
+      rating: Number(drawerRating) || 5,
+      comment: trimmed,
+    });
+    if (result !== false) {
+      setDrawerComment('');
+      setDrawerRating('5');
+    }
+  };
 
   return (
     <Drawer
@@ -365,6 +485,61 @@ export function OrderDetailDrawer({
                     </VStack>
                   </>
                 )}
+
+                {onSubmitFeedback &&
+                  order.status === 'Connected' &&
+                  detail.feedback.length === 0 && (
+                    <>
+                      <Divider />
+                      <VStack gap={3}>
+                        <Heading level={4}>Submit Service Feedback</Heading>
+                        <ApiErrorBanner
+                          title="Feedback submission failed"
+                          error={feedbackError}
+                          onDismiss={onDismissFeedbackError}
+                        />
+                        <form onSubmit={(e) => void handleDrawerFeedbackSubmit(e)}>
+                          <FormLayout>
+                            <Selector
+                              label="Rating"
+                              isRequired
+                              isDisabled={isSuspended || feedbackSubmitting}
+                              options={DRAWER_RATING_OPTIONS}
+                              value={drawerRating}
+                              onChange={setDrawerRating}
+                            />
+                            <TextArea
+                              label="Comment"
+                              placeholder="Share installation quality or connection experience..."
+                              rows={3}
+                              maxLength={600}
+                              isRequired
+                              isDisabled={isSuspended || feedbackSubmitting}
+                              value={drawerComment}
+                              onChange={(val) => {
+                                setDrawerComment(val);
+                                setDrawerCommentError(null);
+                              }}
+                              status={
+                                drawerCommentError
+                                  ? { type: 'error', message: drawerCommentError }
+                                  : undefined
+                              }
+                            />
+                            <HStack hAlign="end">
+                              <Button
+                                type="submit"
+                                variant="primary"
+                                label="Submit Feedback"
+                                isLoading={feedbackSubmitting}
+                                isDisabled={isSuspended || feedbackSubmitting}
+                              />
+                            </HStack>
+                          </FormLayout>
+                        </form>
+                      </VStack>
+                    </>
+                  )}
               </VStack>
             ) : (
               <EmptyState
@@ -418,7 +593,7 @@ export function OfflineBanner({ onRetry }: { onRetry?: () => void }) {
       container="section"
       collapsible={false}
       title="Backend API Unreachable"
-      description="Could not reach the Nexus API server on http://127.0.0.1:5168. Start the backend server and retry."
+      description="Could not reach the Nexus API service. Start the backend server and retry."
       endContent={
         onRetry ? (
           <Button size="sm" variant="secondary" label="Retry Connection" onClick={onRetry} />

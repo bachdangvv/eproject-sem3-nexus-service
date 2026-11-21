@@ -23,6 +23,13 @@ export const RoutePath = {
   HOME: '/',
   TRACK: '/track',
   LOGIN: '/login',
+  REGISTER: '/register',
+
+  CUSTOMER: '/customer',
+  CUSTOMER_PROFILE: '/customer/profile',
+  CUSTOMER_ORDERS: '/customer/orders',
+  CUSTOMER_BILLING: '/customer/billing',
+  CUSTOMER_SUPPORT: '/customer/support',
 
   ADMIN: '/admin',
   ADMIN_PLANS: '/admin/plans',
@@ -34,18 +41,27 @@ export const RoutePath = {
   ADMIN_VENDORS: '/admin/vendors',
   ADMIN_PURCHASES: '/admin/purchases',
   ADMIN_VENDOR_PAYMENTS: '/admin/vendor-payments',
+  ADMIN_DOCUMENTS: '/admin/documents',
+  ADMIN_PLAN_CHANGES: '/admin/plan-changes',
+  ADMIN_QUERIES: '/admin/queries',
 
   RETAIL: '/retail',
   RETAIL_CUSTOMERS: '/retail/customers',
   RETAIL_REQUESTS: '/retail/requests',
   RETAIL_ORDERS: '/retail/orders',
   RETAIL_BILLING: '/retail/billing',
+  RETAIL_LIFECYCLE: '/retail/lifecycle',
+  RETAIL_DOCUMENTS: '/retail/documents',
+  RETAIL_PLAN_CHANGES: '/retail/plan-changes',
+  RETAIL_QUERIES: '/retail/queries',
 
   TECHNICAL: '/technical',
   TECHNICAL_ASSESSMENTS: '/technical/assessments',
   TECHNICAL_CONNECTIONS: '/technical/connections',
   TECHNICAL_EQUIPMENT: '/technical/equipment',
   TECHNICAL_ORDERS: '/technical/orders',
+  TECHNICAL_LIFECYCLE: '/technical/lifecycle',
+  TECHNICAL_PLAN_CHANGES: '/technical/plan-changes',
 
   BILLING: '/billing',
   BILLING_ACCOUNTS: '/billing/accounts',
@@ -73,6 +89,8 @@ export function getDefaultRouteForRole(role: UserRole): string {
       return RoutePath.TECHNICAL_ASSESSMENTS;
     case 'Billing':
       return RoutePath.BILLING_ACCOUNTS;
+    case 'Customer':
+      return RoutePath.CUSTOMER_PROFILE;
   }
 }
 
@@ -210,7 +228,7 @@ export function RoleGuard({
       <Center padding={8}>
         <VStack gap={3} hAlign="center">
           <Spinner size="lg" label="Checking session..." />
-          <Text type="supporting">Verifying staff session...</Text>
+          <Text type="supporting">Verifying session...</Text>
         </VStack>
       </Center>
     );
