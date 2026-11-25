@@ -6,7 +6,7 @@ using Nexus.Domain;
 namespace Nexus.Infrastructure.Persistence;
 
 /// <summary>EF Core repository implementation serving catalog, operations, staff, billing, inventory, and customer portal stores.</summary>
-public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore, IBillingStore, IInventoryStore, ICustomerPortalStore
+public sealed partial class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, IStaffStore, IBillingStore, IInventoryStore, ICustomerPortalStore, IDepositStore
 {
     public Task<Employee?> FindEmployeeAsync(string username) =>
         db.Employees.AsNoTracking().Include(employee => employee.Customer)
@@ -122,6 +122,7 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
             .Include(o => o.Request).ThenInclude(r => r.Customer)
             .Include(o => o.Request).ThenInclude(r => r.Plan)
             .Include(o => o.Connection)
+            .Include(o => o.Deposit)
             .Where(o => o.Connection != null);
 
         if (!string.IsNullOrWhiteSpace(status) && !status.Trim().Equals("ALL", StringComparison.OrdinalIgnoreCase))
@@ -247,6 +248,8 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
             .Include(o => o.Connection)!.ThenInclude(c => c!.Invoices)
             .Include(o => o.Connection)!.ThenInclude(c => c!.Incidents)
             .Include(o => o.History)
+            .Include(o => o.Advance)
+            .Include(o => o.Deposit)!.ThenInclude(d => d!.Transactions).ThenInclude(t => t.Actor)
             .FirstOrDefaultAsync(o => o.Connection != null && o.Connection.Id == connId && o.Connection.Type == type && o.Connection.CityCode == city);
     }
 
@@ -259,6 +262,8 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
             .Include(o => o.Connection)!.ThenInclude(c => c!.Invoices)
             .Include(o => o.Connection)!.ThenInclude(c => c!.Incidents)
             .Include(o => o.History)
+            .Include(o => o.Advance)
+            .Include(o => o.Deposit)!.ThenInclude(d => d!.Transactions).ThenInclude(t => t.Actor)
             .FirstOrDefaultAsync(o => o.Connection != null && o.Connection.Id == connectionId);
     }
 
@@ -512,7 +517,9 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
             .OrderByDescending(i => i.Id).FirstOrDefaultAsync();
 
     public async Task<IReadOnlyList<Invoice>> ListInvoicesAsync(long connectionId) =>
-        await db.Invoices.AsNoTracking().Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+        await db.Invoices.AsNoTracking().AsSplitQuery()
+            .Include(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(i => i.Payments).ThenInclude(p => p.RetailShop)
             .Include(i => i.PaidBy).Where(i => i.ConnectionId == connectionId)
             .OrderByDescending(i => i.Id).ToListAsync();
 
@@ -527,13 +534,16 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
 
     public async Task<IReadOnlyList<ServiceOrder>> ListConnectedOrdersAsync(string? q, string? status, string? cityCode)
     {
-        var query = db.Orders.AsNoTracking()
+        var query = db.Orders.AsNoTracking().AsSplitQuery()
             .Include(o => o.Request).ThenInclude(r => r.Customer)
             .Include(o => o.Request).ThenInclude(r => r.Plan)
             .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
                 .ThenInclude(i => i.PaidBy)
             .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
                 .ThenInclude(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
+                .ThenInclude(i => i.Payments).ThenInclude(p => p.RetailShop)
+            .Include(o => o.Deposit)!.ThenInclude(d => d!.Transactions).ThenInclude(t => t.Actor)
             .Where(o => o.Status == OrderStatus.Connected && o.Connection != null);
 
         if (!string.IsNullOrWhiteSpace(cityCode) && !cityCode.Trim().Equals("ALL", StringComparison.OrdinalIgnoreCase))
@@ -746,19 +756,23 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
             .Include(o => o.Request).ThenInclude(r => r.Customer)
             .Include(o => o.Request).ThenInclude(r => r.Plan)
             .Include(o => o.Connection)
+            .Include(o => o.Deposit)
             .Where(o => o.Connection != null && o.Request.CustomerId == customerId)
             .OrderByDescending(o => o.Connection!.Id)
             .Take(100)
             .ToListAsync();
 
     public async Task<IReadOnlyList<ServiceOrder>> ListCustomerBillingOrdersAsync(int customerId) =>
-        await db.Orders.AsNoTracking()
+        await db.Orders.AsNoTracking().AsSplitQuery()
             .Include(o => o.Request).ThenInclude(r => r.Customer)
             .Include(o => o.Request).ThenInclude(r => r.Plan)
             .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
                 .ThenInclude(i => i.PaidBy)
             .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
                 .ThenInclude(i => i.Payments).ThenInclude(p => p.PaidBy)
+            .Include(o => o.Connection).ThenInclude(c => c!.Invoices)
+                .ThenInclude(i => i.Payments).ThenInclude(p => p.RetailShop)
+            .Include(o => o.Deposit)!.ThenInclude(d => d!.Transactions).ThenInclude(t => t.Actor)
             .Where(o => o.Status == OrderStatus.Connected && o.Connection != null && o.Request.CustomerId == customerId)
             .OrderByDescending(o => o.Connection!.Id)
             .Take(100)
@@ -794,7 +808,9 @@ public sealed class EfNexusStore(NexusDb db) : ICatalogStore, IOperationsStore, 
     }
 
     private IQueryable<ServiceOrder> Orders() =>
-        db.Orders.Include(order => order.Request).ThenInclude(request => request.Customer)
+        db.Orders.AsSplitQuery().Include(order => order.Request).ThenInclude(request => request.Customer)
             .Include(order => order.Request).ThenInclude(request => request.Plan)
-            .Include(order => order.Connection);
+            .Include(order => order.Connection)
+            .Include(order => order.Advance)
+            .Include(order => order.Deposit)!.ThenInclude(d => d!.Transactions).ThenInclude(t => t.Actor);
 }

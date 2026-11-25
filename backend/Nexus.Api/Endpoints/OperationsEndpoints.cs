@@ -33,6 +33,8 @@ public static class OperationsEndpoints
             Results.Json(await service.CreateRequestAsync(input, ActorId(actor)), statusCode: 201));
         retail.MapPost("/requests/{id:int}/confirm", async (int id, OperationsService service, ClaimsPrincipal actor) =>
             CreatedOrExisting(await service.ConfirmAsync(id, ActorId(actor))));
+        retail.MapPost("/orders/{code}/cancel", (string code, CancelOrderInput input, OperationsService service, ClaimsPrincipal actor) =>
+            service.CancelOrderAsync(code, input, ActorId(actor)));
         retail.MapPost("/orders/{code}/feedback", async (string code, FeedbackInput input, OperationsService service, ClaimsPrincipal actor) =>
             Results.Json(await service.RecordFeedbackAsync(code, input, ActorId(actor)), statusCode: 201));
 

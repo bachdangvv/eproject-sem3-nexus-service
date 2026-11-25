@@ -31,6 +31,8 @@ public static class InfrastructureRegistration
         services.AddScoped<IStaffStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IInventoryStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<ICustomerPortalStore>(provider => provider.GetRequiredService<EfNexusStore>());
+        services.AddScoped<IDepositStore>(provider => provider.GetRequiredService<EfNexusStore>());
+        services.AddScoped<IAdvanceStore>(provider => provider.GetRequiredService<EfNexusStore>());
         services.AddScoped<IPasswordHasher<Employee>, PasswordHasher<Employee>>();
         services.AddScoped<IPasswordService, IdentityPasswordService>();
         return services;
@@ -42,6 +44,8 @@ public static class InfrastructureRegistration
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NexusDb>();
         db.Database.Migrate();
+        db.InitializeLegacyDeposits();
+        db.InitializeLegacyAdvances();
         if (string.IsNullOrEmpty(initialPassword) || db.Employees.Any()) return;
 
         if (initialPassword.Length is < 12 or > 128)

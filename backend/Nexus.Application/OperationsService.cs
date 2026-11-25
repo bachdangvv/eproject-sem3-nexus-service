@@ -9,7 +9,7 @@ public sealed record CustomerView(int Id, string Code, string Name, string Phone
 public sealed record RequestView(int Id, int CustomerId, string CustomerName, int PlanId, string PlanName,
     string Type, string CityCode, string Address, bool HasNexusLandline, decimal Price, DateTime CreatedAt, int ConnectionCount = 1, string? CustomerPhone = null);
 public sealed record OrderView(string Code, int RequestId, string Status, RequestView Request, DateTime CreatedAt,
-    string? AccountId, DateTime? ActivatedAt, int? AssignedProductId = null)
+    string? AccountId, DateTime? ActivatedAt, int? AssignedProductId = null, DepositView? Deposit = null)
 {
     public string CustomerName => Request.CustomerName;
     public string Type => Request.Type;
@@ -42,7 +42,8 @@ public sealed record ConnectionLifecycleView(
     string CustomerName,
     string CustomerPhone,
     string PlanName,
-    DateTime ActivatedAt);
+    DateTime ActivatedAt,
+    DepositView? Deposit = null);
 
 public sealed record DocumentUploadRequest(
     int CustomerId,
@@ -298,6 +299,15 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         return new Creation<OrderView>(ToView(order), true);
     }
 
+    public async Task<OrderView> CancelOrderAsync(string code, CancelOrderInput input, int actorId)
+    {
+        var order = await FindOrderAsync(code);
+        order.Cancel(input.Reason, actorId);
+        try { await operations.SaveChangesAsync(); }
+        catch (StoreWriteException) { throw new UseCaseException(UseCaseFailure.Conflict, "Order or deposit changed concurrently. Refresh before cancelling."); }
+        return ToView(order);
+    }
+
     // --- Group 3.1: Connection Lifecycle ---
     public async Task<IReadOnlyList<ConnectionLifecycleView>> ConnectionsAsync(
         string? q = null,
@@ -463,29 +473,15 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
         conn.Status = "PermanentlyInactive";
         conn.TerminatedAt = DateTime.UtcNow;
 
-        // Deposit Refund Determination Engine: exclude RolledOver invoices and apply bulk discount fallback.
-        var depositInvoice = conn.Invoices.FirstOrDefault(i => i.DepositAmount > 0);
-        var count = Math.Max(1, order.Request?.ConnectionCount ?? 1);
-        var discountPercent = FinancialConstants.GetBulkDiscountPercent(count);
-        var depositGross = Math.Round(FinancialConstants.GetSecurityDeposit(conn.Type) * count, 2);
-        var discountOnDeposit = Math.Round(depositGross * discountPercent / 100m, 2);
-        decimal baseDeposit = depositInvoice != null
-            ? depositInvoice.DepositAmount
-            : depositGross - discountOnDeposit;
-
-        decimal unpaidDues = conn.Invoices
-            .Where(i => i.Status is "Unpaid" or "PartiallyPaid")
-            .Sum(i => i.DueAmount);
-        decimal damageFees = conn.Incidents.Where(i => !i.Settled).Sum(i => i.ReplacementFee);
-        decimal netRefund = Math.Max(0m, Math.Round(baseDeposit - (unpaidDues + damageFees), 2));
-
-        conn.RefundAmount = netRefund;
-        conn.RefundStatus = netRefund > 0 ? "Pending" : "None";
+        // Technical closes service only. Billing refunds verified ledger cash, independently of debt/damage bills.
+        if (order.Deposit is not null) order.Deposit.Version++;
+        if (order.Advance is not null) order.Advance.Version++;
+        DepositService.ApplyRefundSummary(order);
 
         var note = input?.Note?.Trim();
         var auditNote = string.IsNullOrWhiteSpace(note)
-            ? $"Technical terminated connection. Deposit: ${baseDeposit}, Liabilities: ${unpaidDues + damageFees}, Net Refund: ${netRefund} (Status: {conn.RefundStatus})"
-            : $"Technical terminated connection ({note}). Deposit: ${baseDeposit}, Liabilities: ${unpaidDues + damageFees}, Net Refund: ${netRefund} (Status: {conn.RefundStatus})";
+            ? "Technical terminated connection. Billing must refund the verified deposit balance; debts remain separate."
+            : $"Technical terminated connection ({note}). Billing must refund the verified deposit balance; debts remain separate.";
 
         order.History.Add(new OrderEvent
         {
@@ -1074,6 +1070,7 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
     internal static ConnectionLifecycleView ToLifecycleView(ServiceOrder order)
     {
         var conn = order.Connection!;
+        var refund = DepositService.RefundSummary(order);
         return new ConnectionLifecycleView(
             conn.Id,
             conn.AccountId,
@@ -1084,12 +1081,13 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
             conn.SuspendReason,
             conn.SuspendedAt.HasValue ? AsUtc(conn.SuspendedAt.Value) : null,
             conn.TerminatedAt.HasValue ? AsUtc(conn.TerminatedAt.Value) : null,
-            conn.RefundStatus,
-            conn.RefundAmount,
+            refund.Status,
+            refund.Amount,
             order.Request.Customer.Name,
             order.Request.Customer.Phone,
             order.Request.PlanName,
-            AsUtc(conn.ActivatedAt)
+            AsUtc(conn.ActivatedAt),
+            order.Deposit is null ? null : DepositService.ToView(order)
         );
     }
 
@@ -1120,7 +1118,7 @@ public sealed class OperationsService(IOperationsStore operations, ICatalogStore
     internal static OrderView ToView(ServiceOrder order) =>
         new(order.Code, order.RequestId, order.Status.ToString(), ToView(order.Request), AsUtc(order.CreatedAt),
             order.Connection?.AccountId, order.Connection is null ? null : AsUtc(order.Connection.ActivatedAt),
-            order.Connection?.AssignedProductId);
+            order.Connection?.AssignedProductId, order.Deposit is null ? null : DepositService.ToView(order));
 
     internal static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

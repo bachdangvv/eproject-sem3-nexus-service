@@ -25,7 +25,9 @@ import {
   BillingStatusPill,
   CopyableId,
   formatUsd,
+  lastPaymentAt,
 } from '../../components/StatusViews';
+import { PaymentHistory } from '../shared/PaymentHistory';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import {
@@ -37,7 +39,6 @@ import { getCities } from '../../services/catalogApi';
 import type {
   BillingView,
   CityView,
-  PaymentItemView,
   RecordPaymentInput,
 } from '../../types/nexus';
 import {
@@ -314,12 +315,14 @@ export function RetailBillingSection({
       key: 'paidAt',
       header: 'Last Payment',
       width: pixel(140),
-      renderCell: (r: RetailBillingRow) =>
-        r.paidAt ? (
-          <Timestamp value={r.paidAt} format="date" timezoneID="UTC" />
+      renderCell: (r: RetailBillingRow) => {
+        const at = lastPaymentAt(r);
+        return at ? (
+          <Timestamp value={at} format="date" timezoneID="UTC" />
         ) : (
           <Text type="supporting">No payments</Text>
-        ),
+        );
+      },
     },
     {
       key: 'actions',
@@ -339,78 +342,10 @@ export function RetailBillingSection({
     },
   ];
 
-  const drawerPaymentColumns: TableColumn<PaymentItemView & Record<string, unknown>>[] = [
-    {
-      key: 'date',
-      header: 'Date (UTC)',
-      width: proportional(1.5),
-      renderCell: (p: PaymentItemView & Record<string, unknown>) => (
-        <Timestamp value={p.paidAt} format="date_time" timezoneID="UTC" isTimezoneShown />
-      ),
-    },
-    {
-      key: 'amount',
-      header: 'Amount',
-      width: pixel(100),
-      renderCell: (p: PaymentItemView & Record<string, unknown>) => (
-        <Text weight="semibold">{formatUsd(p.amount)}</Text>
-      ),
-    },
-    {
-      key: 'channel',
-      header: 'Channel',
-      width: pixel(120),
-      renderCell: (p: PaymentItemView & Record<string, unknown>) => (
-        <Token
-          size="sm"
-          color={
-            p.channel === 'CustomerPortal'
-              ? 'teal'
-              : p.channel === 'RetailOutlet'
-                ? 'purple'
-                : 'blue'
-          }
-          label={
-            p.channel === 'CustomerPortal'
-              ? 'Customer Portal'
-              : p.channel === 'RetailOutlet'
-                ? 'Retail Outlet'
-                : 'City Office'
-          }
-        />
-      ),
-    },
-    {
-      key: 'collector',
-      header: 'Collector',
-      width: pixel(110),
-      renderCell: (p: PaymentItemView & Record<string, unknown>) => (
-        <Text type="supporting">{p.paidByUsername}</Text>
-      ),
-    },
-    {
-      key: 'note',
-      header: 'Note',
-      width: proportional(1.5),
-      renderCell: (p: PaymentItemView & Record<string, unknown>) => (
-        <Text type="supporting">{p.note || '—'}</Text>
-      ),
-    },
-  ];
 
   const activeDue =
     selectedRecord?.dueAmount ??
     (selectedRecord?.status === 'Paid' ? 0 : selectedRecord?.amount ?? 0);
-
-  const drawerPaymentRows = useMemo(
-    () =>
-      (selectedRecord?.payments ?? []) as unknown as (PaymentItemView & Record<string, unknown>)[],
-    [selectedRecord?.payments],
-  );
-
-  const paymentPagination = useClientPagination(drawerPaymentRows, {
-    resetKey: selectedRecord?.accountId ?? '',
-  });
 
   return (
     <VStack gap={4}>
@@ -622,7 +557,7 @@ export function RetailBillingSection({
                             )}
                           </Text>
                         </MetadataListItem>
-                        <MetadataListItem label="Bulk Discount Applied">
+                        <MetadataListItem label="Recorded Discount">
                           <Text weight="semibold">
                             {selectedRecord.discountPercent && selectedRecord.discountPercent > 0
                               ? `${selectedRecord.discountPercent}% (-${formatUsd(selectedRecord.discountAmount ?? 0)})`
@@ -632,7 +567,7 @@ export function RetailBillingSection({
                         <MetadataListItem label="Government Service Tax (12.24%)">
                           <Text weight="semibold">{formatUsd(selectedRecord.taxAmount ?? 0)}</Text>
                         </MetadataListItem>
-                        <MetadataListItem label="Refundable Security Deposit">
+                        <MetadataListItem label="Deposit included in this invoice">
                           <Text weight="semibold">
                             {formatUsd(selectedRecord.depositAmount ?? 0)}
                           </Text>
@@ -728,35 +663,7 @@ export function RetailBillingSection({
                     </Card>
                   ) : null}
 
-                  {/* Payment Transactions */}
-                  <VStack gap={3}>
-                    <Heading level={4}>Payment Collection History</Heading>
-                    {drawerPaymentRows.length > 0 ? (
-                      <VStack gap={3}>
-                        <Table<PaymentItemView & Record<string, unknown>>
-                          aria-label="Retail Payment History Table"
-                          density="compact"
-                          columns={drawerPaymentColumns}
-                          data={paymentPagination.paginatedItems}
-                          rowIndexStart={paymentPagination.rowIndexStart}
-                          rowCount={paymentPagination.totalItems}
-                          idKey="id"
-                        />
-                        <TablePaginationFooter
-                          page={paymentPagination.page}
-                          pageSize={paymentPagination.pageSize}
-                          totalItems={paymentPagination.totalItems}
-                          onPageChange={paymentPagination.setPage}
-                          onPageSizeChange={paymentPagination.setPageSize}
-                          label="Retail payment history pagination"
-                        />
-                      </VStack>
-                    ) : (
-                      <Card padding={4} variant="muted">
-                        <Text type="supporting">No payments have been received for this account.</Text>
-                      </Card>
-                    )}
-                  </VStack>
+                  <PaymentHistory key={selectedRecord.accountId} record={selectedRecord} />
                 </VStack>
               ) : (
                 <EmptyState

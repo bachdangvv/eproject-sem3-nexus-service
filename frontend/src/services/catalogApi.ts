@@ -54,6 +54,7 @@ export function createPlan(input: PlanInput): Promise<PlanView> {
       validityMonths: input.validityMonths ?? 1,
       hoursAllowance: input.hoursAllowance ?? null,
       speedKbps: input.speedKbps ?? null,
+      advancePerConnection: input.advancePerConnection ?? null,
     }),
   });
 }
@@ -73,6 +74,7 @@ export function updatePlan(id: number, input: PlanInput): Promise<PlanView> {
       validityMonths: input.validityMonths ?? 1,
       hoursAllowance: input.hoursAllowance ?? null,
       speedKbps: input.speedKbps ?? null,
+      advancePerConnection: input.advancePerConnection ?? null,
     }),
   });
 }

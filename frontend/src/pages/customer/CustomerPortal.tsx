@@ -2,6 +2,8 @@
  * Root Customer Portal shell rendering the active customer section header and workspace panel.
  */
 import { useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { DepositsSection } from '../shared/DepositsSection';
+import { AdvancesSection } from '../shared/AdvancesSection';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -82,6 +84,8 @@ export function CustomerPortal({ section }: { section: CustomerSection }): JSX.E
         </HStack>
       </Card>
 
+      {(section === 'orders' || section === 'billing') && <DepositsSection role="Customer" refreshTrigger={refreshTrigger} />}
+      {(section === 'orders' || section === 'billing') && <AdvancesSection role="Customer" refreshTrigger={refreshTrigger} />}
       {section === 'profile' && (
         <CustomerProfileSection
           refreshTrigger={refreshTrigger}

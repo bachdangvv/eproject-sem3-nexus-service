@@ -45,7 +45,7 @@ const STRIP_MARKS: ReadonlyArray<string> = [
   'Broadband $500',
   'Landline $250',
   'Dial-Up $325',
-  'Bulk 25%–100%',
+  'Deposit discounts 25%–100%',
   '12.24% Tax',
   'Nexus Core',
 ];

@@ -30,7 +30,15 @@ public sealed record PaymentItemView(
     DateTime PaidAt,
     string PaidByUsername,
     string Channel,
-    string? Note);
+    string? Note,
+    string InvoiceNumber,
+    string InvoiceStatus,
+    string ReceiptCode,
+    string? PaidByDisplayName,
+    int? RetailShopId,
+    string? RetailShopName);
+
+public sealed record PaymentHistoryGapView(long InvoiceId, string InvoiceNumber, decimal RecordedPaidAmount, decimal RecordedPaymentTotal);
 
 public sealed record BillingView(
     string AccountId,
@@ -66,7 +74,8 @@ public sealed record BillingView(
     string ConnectionStatus = "Active",
     string RefundStatus = "None",
     decimal RefundAmount = 0m,
-    DateTime? RefundedAt = null);
+    DateTime? RefundedAt = null,
+    IReadOnlyList<PaymentHistoryGapView>? PaymentHistoryGaps = null);
 
 /// <summary>Persistence port for connection invoices, payment transactions, and billing account queries.</summary>
 public interface IBillingStore
@@ -82,7 +91,7 @@ public interface IBillingStore
     Task SaveChangesAsync();
 }
 
-/// <summary>Application service implementing invoice generation, rollover, payment collection, and deposit refunds.</summary>
+/// <summary>Service invoice generation, rollover and payment collection. Order deposits use DepositService.</summary>
 public sealed class BillingService(IOperationsStore operations, IBillingStore bills)
 {
     public async Task<IReadOnlyList<BillingView>> ListAsync(string? q, string? status, string? cityCode)
@@ -136,19 +145,10 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         var count = Math.Max(1, order.Request.ConnectionCount);
         var baseRental = order.Request.SnapshotPrice > 0 ? order.Request.SnapshotPrice : order.Request.Plan!.Price;
         var rentalAmount = Math.Round(baseRental * count, 2);
-        var discountPercent = FinancialConstants.GetBulkDiscountPercent(count);
-
-        var isFirstInvoice = existingInvoices.Count == 0;
-        var includeDeposit = input?.IncludeDeposit ?? isFirstInvoice;
-        var unitDeposit = includeDeposit ? FinancialConstants.GetSecurityDeposit(order.Request.Type) : 0m;
-        var depositGross = Math.Round(unitDeposit * count, 2);
-
-        var discountOnRental = Math.Round(rentalAmount * discountPercent / 100m, 2);
-        var discountOnDeposit = Math.Round(depositGross * discountPercent / 100m, 2);
-        var totalDiscount = discountOnRental + discountOnDeposit;
-
-        var netRental = rentalAmount - discountOnRental;
-        var netDeposit = depositGross - discountOnDeposit;
+        // Security deposits are collected against the Order before activation, independently of service bills.
+        // Keep legacy invoice fields readable but reject new attempts to bill the deposit twice.
+        if (input?.IncludeDeposit == true)
+            throw new UseCaseException(UseCaseFailure.InvalidInput, "Collect security deposits through the Order deposit ledger, not a service invoice.");
 
         var callUsage = Math.Round(
             localMin * (order.Request.Plan?.LocalCallRate ?? 0m) +
@@ -163,7 +163,8 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         {
             incident.Settled = true;
         }
-        var taxableCharges = Math.Max(0m, netRental + callUsage + equipmentFee);
+        var taxableCharges = Math.Max(0m, rentalAmount + callUsage + equipmentFee);
+        // Preserve the current tax policy; treatment of refundable deposits needs spec clarification.
         var taxRate = FinancialConstants.ServiceTaxRate;
         var taxAmount = Math.Round(taxableCharges * taxRate, 2);
 
@@ -175,8 +176,8 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             prior.DueAmount = 0m;
         }
 
-        var subtotal = Math.Max(0m, rentalAmount + callUsage + equipmentFee - discountOnRental);
-        var totalAmount = taxableCharges + taxAmount + netDeposit + previousDue;
+        var subtotal = taxableCharges;
+        var totalAmount = taxableCharges + taxAmount + previousDue;
 
         var invoice = new Invoice
         {
@@ -191,11 +192,11 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             CallUsageAmount = callUsage,
             EquipmentFee = equipmentFee,
             Subtotal = subtotal,
-            DiscountAmount = totalDiscount,
-            DiscountPercent = discountPercent,
+            DiscountAmount = 0m,
+            DiscountPercent = 0,
             TaxRate = taxRate,
             TaxAmount = taxAmount,
-            DepositAmount = netDeposit,
+            DepositAmount = 0m,
             PreviousDueBalance = previousDue,
             TotalAmount = totalAmount,
             PaidAmount = 0m,
@@ -236,12 +237,13 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         if (invoice.Status == "RolledOver")
             throw new UseCaseException(UseCaseFailure.Conflict, "Cannot record payment against a rolled-over invoice.");
 
-        var payAmount = input?.Amount is { } amount
-            ? Math.Min(amount, invoice.DueAmount)
-            : invoice.DueAmount;
+        var payAmount = input?.Amount ?? invoice.DueAmount;
+        if (payAmount <= 0m || payAmount > invoice.DueAmount)
+            throw new UseCaseException(UseCaseFailure.Conflict, "Payment must be within the invoice's remaining debt. Refresh the invoice before recording the receipt.");
+        var actor = await operations.FindEmployeeByIdAsync(actorId)
+            ?? throw new UseCaseException(UseCaseFailure.Unauthorized);
 
-        var now = DateTime.UtcNow;
-        var paidTimestamp = new DateTime(now.Ticks - (now.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
+        var paidTimestamp = DateTime.UtcNow;
 
         var payment = new PaymentTransaction
         {
@@ -249,6 +251,7 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             Amount = payAmount,
             PaidAt = paidTimestamp,
             PaidById = actorId,
+            RetailShopId = actor.RetailShopId,
             Channel = channel,
             Note = input?.Note?.Trim()
         };
@@ -270,35 +273,12 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         try { await bills.SaveChangesAsync(); }
         catch (StoreWriteException error) when (error.ConcurrentChange)
         {
-            var latest = await bills.ReadLatestInvoiceAsync(connectionId);
-            if (latest?.PaidAt is null) throw;
-            var fallbackInvoices = await bills.ListInvoicesAsync(connectionId);
-            return ToView(order, latest, fallbackInvoices);
+            // Another collector's success is not evidence that this receipt was saved.
+            throw new UseCaseException(UseCaseFailure.Conflict, "Invoice changed concurrently. Refresh and check payment history before retrying.");
         }
 
         var updatedAll = await bills.ListInvoicesAsync(connectionId);
         return ToView(order, invoice, updatedAll);
-    }
-
-    public async Task<BillingView> RefundDepositAsync(string accountId, RefundDepositInput? input, int actorId)
-    {
-        var order = await FindConnectedOrderAsync(accountId);
-        var conn = order.Connection!;
-        if (conn.Status != "PermanentlyInactive")
-            throw new UseCaseException(UseCaseFailure.Conflict, "Only permanently terminated connections can receive a deposit refund.");
-        if (conn.RefundStatus == "Refunded")
-            throw new UseCaseException(UseCaseFailure.Conflict, "Security deposit refund has already been disbursed.");
-        if (conn.RefundStatus != "Pending" || (conn.RefundAmount ?? 0m) <= 0m)
-            throw new UseCaseException(UseCaseFailure.Conflict, "No pending security deposit refund is available for this account.");
-
-        conn.RefundStatus = "Refunded";
-        conn.RefundedAt = DateTime.UtcNow;
-        conn.RefundedById = actorId;
-        conn.RefundNote = string.IsNullOrWhiteSpace(input?.Note) ? null : input.Note.Trim();
-
-        await bills.SaveChangesAsync();
-        var allInvoices = await bills.ListInvoicesAsync(conn.Id);
-        return ToView(order, allInvoices.FirstOrDefault(), allInvoices);
     }
 
     private static DateTime NormalizeUtc(DateTime value) =>
@@ -311,6 +291,7 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
     internal static BillingView ToView(ServiceOrder order, Invoice? invoice, IReadOnlyList<Invoice>? allInvoices = null)
     {
         var conn = order.Connection!;
+        var refund = DepositService.RefundSummary(order);
         var count = Math.Max(1, order.Request.ConnectionCount);
         var basePlanPrice = order.Request.SnapshotPrice > 0 ? order.Request.SnapshotPrice : order.Request.Plan.Price;
 
@@ -329,13 +310,13 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
                 null,
                 defaultRental,
                 0m, 0m, defaultRental, 0m,
-                FinancialConstants.GetBulkDiscountPercent(count),
+                0,
                 0m, 0m, 0m, defaultRental, 0m, defaultRental,
                 count, 0m, 0m, 0m, null, null, null, null, null,
                 conn.Status,
-                conn.RefundStatus ?? "None",
-                conn.RefundAmount ?? 0m,
-                conn.RefundedAt is DateTime rAtNull ? DateTime.SpecifyKind(rAtNull, DateTimeKind.Utc) : null);
+                refund.Status,
+                refund.Amount,
+                refund.At);
         }
 
         var invoiceViews = allInvoices?.Select(i => new InvoiceItemView(
@@ -360,15 +341,25 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             i.PaidAt is DateTime pAt ? DateTime.SpecifyKind(pAt, DateTimeKind.Utc) : null
         )).ToList();
 
-        var paymentViews = invoice.Payments?.Select(p => new PaymentItemView(
+        // History belongs to the account, not just its latest bill. Rollover never moves or recreates receipts.
+        var historyInvoices = allInvoices ?? new[] { invoice };
+        var paymentViews = historyInvoices.SelectMany(i => i.Payments.Select(p => new PaymentItemView(
             p.Id,
-            p.InvoiceId,
+            i.Id,
             p.Amount,
             DateTime.SpecifyKind(p.PaidAt, DateTimeKind.Utc),
-            p.PaidBy?.DisplayName ?? p.PaidBy?.Username ?? "",
+            p.PaidBy?.Username ?? "",
             p.Channel,
-            p.Note
-        )).ToList();
+            p.Note,
+            i.InvoiceNumber,
+            i.Status,
+            $"PAY-{p.Id:D10}", // Internal lookup code derived from the persisted transaction, not external payment evidence.
+            p.PaidBy?.DisplayName,
+            p.RetailShopId,
+            p.RetailShop?.Name
+        ))).OrderByDescending(p => p.PaidAt).ThenByDescending(p => p.Id).ToList();
+        var historyGaps = historyInvoices.Where(i => i.PaidAmount != i.Payments.Sum(p => p.Amount))
+            .Select(i => new PaymentHistoryGapView(i.Id, i.InvoiceNumber, i.PaidAmount, i.Payments.Sum(p => p.Amount))).ToList();
 
         return new BillingView(
             conn.AccountId,
@@ -402,8 +393,9 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             invoiceViews,
             paymentViews,
             conn.Status,
-            conn.RefundStatus ?? "None",
-            conn.RefundAmount ?? 0m,
-            conn.RefundedAt is DateTime rAt ? DateTime.SpecifyKind(rAt, DateTimeKind.Utc) : null);
+            refund.Status,
+            refund.Amount,
+            refund.At,
+            historyGaps);
     }
 }

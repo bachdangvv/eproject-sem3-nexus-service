@@ -208,6 +208,7 @@ export function CustomerOrdersSection({
     return computeBillAmounts({
       connectionType: selectedPlan.type,
       planRentalUsd: selectedPlan.price,
+      advancePerConnection: selectedPlan.advancePerConnection,
       connectionCount,
       includeSecurityDeposit: true,
       usageChargesUsd: 0,
@@ -566,7 +567,7 @@ export function CustomerOrdersSection({
           <VStack gap={0.5}>
             <Heading level={2}>Request New Service Connection</Heading>
             <Text type="supporting">
-              Choose an active Dial-Up, Broadband, or Landline plan with bulk line discount previews.
+              Choose an active Dial-Up, Broadband, or Landline plan with security deposit discount previews.
             </Text>
           </VStack>
           <Button
@@ -750,7 +751,7 @@ export function CustomerOrdersSection({
                       max={10000}
                       value={connectionCount}
                       onChange={(val) => setConnectionCount(Math.max(1, val || 1))}
-                      description="10+ lines qualify for 25%-100% bulk deposit & rental discounts."
+                      description="10+ lines in this request qualify for 25%-100% security deposit discounts. Plan rental remains payable in full."
                     />
 
                     {selectedPlan?.type === 'D' && (
@@ -789,13 +790,13 @@ export function CustomerOrdersSection({
                   <Card padding={4} variant="muted">
                     <VStack gap={2}>
                       <HStack hAlign="between" vAlign="center">
-                        <Text weight="semibold">Estimated Upfront Charges</Text>
+                        <Text weight="semibold">Deposit & Service Charge Estimate</Text>
                         <Token
                           size="sm"
                           color={estimate.discountPercent > 0 ? 'green' : 'gray'}
                           label={
                             estimate.discountPercent > 0
-                              ? `${estimate.discountPercent}% Bulk Discount`
+                              ? `${estimate.discountPercent}% Deposit Discount`
                               : 'Standard Pricing'
                           }
                         />
@@ -807,16 +808,26 @@ export function CustomerOrdersSection({
                         <MetadataListItem label="Security Deposit">
                           {formatUsd(estimate.securityDepositGrossUsd)}
                         </MetadataListItem>
-                        <MetadataListItem label="Bulk Discount">
+                        <MetadataListItem label="Security Deposit Discount">
                           -{formatUsd(estimate.bulkDiscountAmountUsd)}
                         </MetadataListItem>
                         <MetadataListItem label="Service Tax (12.24%)">
                           {formatUsd(estimate.serviceTaxUsd)}
                         </MetadataListItem>
-                        <MetadataListItem label="Estimated Upfront Total">
-                          <Text weight="bold">{formatUsd(estimate.totalBilledUsd)}</Text>
+                        <MetadataListItem label="Deposit to collect separately">
+                          {formatUsd(estimate.netDepositUsd)}
+                        </MetadataListItem>
+                        <MetadataListItem label="Estimated service invoice">
+                          {formatUsd(estimate.serviceInvoiceTotalUsd)}
+                        </MetadataListItem>
+                        <MetadataListItem label="Optional advance quote (prepayment)">
+                          {estimate.advanceQuote.configured ? formatUsd(estimate.advanceQuote.quotedAmount) : 'Policy not configured'}
+                        </MetadataListItem>
+                        <MetadataListItem label="Combined estimate across separate charges">
+                          <Text weight="bold">{formatUsd(estimate.totalEstimatedUsd)}</Text>
                         </MetadataListItem>
                       </MetadataList>
+                      <Text type="supporting">Advance changes payment timing. Only money actually received can settle a service invoice; the quoted advance is not an extra charge in this total.</Text>
                     </VStack>
                   </Card>
                 )}

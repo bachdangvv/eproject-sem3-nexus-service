@@ -65,6 +65,8 @@ public sealed class ServicePlan
     public int ValidityMonths { get; set; } = 1; // 1, 3, 6, or 12
     public int? HoursAllowance { get; set; }
     public int? SpeedKbps { get; set; }
+    // Null means no advance policy has been configured; zero is an explicit no-advance policy.
+    public decimal? AdvancePerConnection { get; set; }
 }
 
 public sealed class Product
@@ -103,7 +105,11 @@ public sealed class ServiceRequest
     public ServiceOrder Confirm(int actorId)
     {
         Confirmed = true;
-        var order = new ServiceOrder { Request = this };
+        var order = new ServiceOrder
+        {
+            Request = this, Deposit = SecurityDeposit.Create(Type, ConnectionCount),
+            Advance = AdvanceAccount.Create(Plan?.AdvancePerConnection, ConnectionCount)
+        };
         order.History.Add(new OrderEvent
         {
             Status = OrderStatus.Pending, ActorId = actorId, Note = "Retail confirmed the request."
@@ -112,7 +118,7 @@ public sealed class ServiceRequest
     }
 }
 
-public enum OrderStatus { Pending, Feasible, NotFeasible, Connected }
+public enum OrderStatus { Pending, Feasible, NotFeasible, Connected, Cancelled }
 
 public sealed class ServiceOrder
 {
@@ -123,6 +129,8 @@ public sealed class ServiceOrder
     public OrderStatus Status { get; private set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Connection? Connection { get; set; }
+    public SecurityDeposit? Deposit { get; set; }
+    public AdvanceAccount? Advance { get; set; }
     public List<OrderEvent> History { get; set; } = [];
     public List<ServiceFeedback> Feedback { get; set; } = [];
 
@@ -155,6 +163,11 @@ public sealed class ServiceOrder
         if (Status != OrderStatus.Feasible)
             throw new DomainRuleException(DomainRuleFailure.InvalidState, "Only Feasible orders can be connected.");
 
+        if (Deposit is null || Deposit.NeedsReconciliation || Deposit.CollectedAmount < Deposit.RequiredAmount || Deposit.RefundedAmount > 0)
+            throw new DomainRuleException(DomainRuleFailure.InvalidState, "Collect the full security deposit or reconcile legacy evidence before activation.");
+        Deposit.Version++;
+        if (Advance is not null) Advance.Version++;
+
         Connection = new Connection
         {
             Type = Request.Type,
@@ -168,6 +181,20 @@ public sealed class ServiceOrder
                 ? $"Technical activated the connection with equipment #{productId.Value}."
                 : "Technical activated the connection."
         });
+    }
+
+    /// <summary>Closes an unconnected order; a collected deposit remains available for Billing to refund.</summary>
+    public void Cancel(string reason, int actorId)
+    {
+        if (Connection is not null || Status == OrderStatus.Connected)
+            throw new DomainRuleException(DomainRuleFailure.InvalidState, "Terminate the connection instead of cancelling a connected order.");
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainRuleException(DomainRuleFailure.InvalidInput, "Enter the cancellation reason.");
+        if (Status == OrderStatus.Cancelled) return;
+        Status = OrderStatus.Cancelled;
+        if (Deposit is not null) Deposit.Version++;
+        if (Advance is not null) Advance.Version++;
+        History.Add(new OrderEvent { Status = Status, ActorId = actorId, Note = $"Retail cancelled order: {reason.Trim()}" });
     }
 
     public ServiceFeedback RecordFeedback(int rating, string comment, int actorId)
@@ -352,6 +379,7 @@ public sealed class Invoice
     public decimal CallUsageAmount { get; set; }
     public decimal EquipmentFee { get; set; }
     public decimal Subtotal { get; set; }
+    // Legacy breakdown stays readable; new service invoices keep deposit/discount fields zero.
     public decimal DiscountAmount { get; set; }
     public int DiscountPercent { get; set; }
     public decimal TaxRate { get; set; } = FinancialConstants.ServiceTaxRate;

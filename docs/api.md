@@ -108,11 +108,19 @@ Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `conta
 | --- | --- | --- |
 | `GET /billing/accounts?q=...&status=...&cityCode=...` | Billing | Danh sách tài khoản kết nối kèm chi tiết hóa đơn mới nhất, danh sách `invoices`, `payments`, `connectionStatus`, `refundStatus`, `refundAmount`, `refundedAt`. Hỗ trợ lọc theo từ khóa, trạng thái hóa đơn (`NotBilled`, `Unpaid`, `PartiallyPaid`, `Paid`, `RolledOver`) và thành phố. |
 | `GET /billing/accounts/{accountId}` | Billing | Tra cứu chi tiết tài khoản theo 16 ký tự Account ID, trả về đầy đủ các mục chi phí (tiền cước gói, cước gọi Local/STD/Mobile, phí thiết bị hỏng, chiết khấu bulk, thuế dịch vụ 12.24%, tiền cọc hoàn lại, dư nợ cũ, tổng nợ, đã trả, còn nợ), lịch sử `invoices`/`payments` và trạng thái hoàn cọc (`connectionStatus`, `refundStatus`, `refundAmount`, `refundedAt`). |
-| `POST /billing/accounts/{accountId}` | Billing | Tạo hóa đơn chu kỳ mới hoặc lập hóa đơn ban đầu. Body tùy chọn: `{ localMinutes, stdMinutes, mobileMinutes, equipmentFee, includeDeposit, periodStart, periodEnd }`. Cộng dồn `equipmentFee + unsettledIncidentFee`, kết chuyển các hóa đơn mở trước đó sang `RolledOver` (`dueAmount = 0`, gộp vào `previousDueBalance`), tính `periodEnd` mặc định theo `plan.validityMonths` (`1/3/6/12`), áp dụng chiết khấu số lượng (25%–100%) và thuế 12.24%. |
+| `POST /billing/accounts/{accountId}` | Billing | Tạo hóa đơn chu kỳ mới hoặc lập hóa đơn ban đầu. Body tùy chọn: `{ localMinutes, stdMinutes, mobileMinutes, equipmentFee, includeDeposit, periodStart, periodEnd }`. Cộng dồn `equipmentFee + unsettledIncidentFee`, kết chuyển các hóa đơn mở trước đó sang `RolledOver` (`dueAmount = 0`, gộp vào `previousDueBalance`), tính `periodEnd` mặc định theo `plan.validityMonths` (`1/3/6/12`), tính đủ cước thuê bao và thuế dịch vụ 12.24%; cọc thu riêng theo Order, `includeDeposit: true` trả 400. |
 | `POST /billing/accounts/{accountId}/payment` | Billing | Ghi nhận thanh toán tại City Office (toàn bộ hoặc từng phần). Body tùy chọn: `{ amount, note }` (`amount > 0`, tối đa 2 chữ số thập phân). Trả 409 nếu chưa có hóa đơn hoặc hóa đơn ở trạng thái `RolledOver`. Ghi nhận người thu và kênh thanh toán `"CityOffice"`. |
-| `POST /billing/accounts/{accountId}/refund` | Billing | Giải ngân hoàn trả tiền đặt cọc cho kết nối đã chấm dứt (`PermanentlyInactive`, `refundStatus == "Pending"`, `refundAmount > 0`). Body tùy chọn: `{ note }` → 200 `BillingView` (`refundStatus = "Refunded"`, ghi nhận `refundedAt`, `refundedById`, `refundNote`). Trả 409 nếu không đủ điều kiện hoặc đã hoàn trả. |
+| `POST /billing/accounts/{accountId}/refund` | Billing | Route cũ trả 409 và hướng dẫn dùng `/deposits/{orderId}/refunds` với chứng từ và khóa chống gửi trùng. Không giải ngân bằng route này. |
 
 ### Retail Outlet In-Store Billing & Payments (Role = Retail)
+
+**Phạm vi lịch sử của BillingView:** `invoices` chứa tất cả bill của Account; `payments` chứa tất cả giao dịch thực lưu của các bill đó, gồm Paid/RolledOver, sắp `paidAt DESC, id DESC`. Các route Billing/Retail list/detail, Customer billing và response sau thu/lập bill có cùng phạm vi. `paidAmount`, `dueAmount`, `paidAt` ở cấp BillingView vẫn thuộc bill hiện tại, không phải tổng lịch sử. Để xem payment của riêng một bill, lọc theo `invoiceId`.
+
+Payment trả `id`, `invoiceId`, `amount`, `paidAt` UTC, `paidByUsername` (username thực), `paidByDisplayName`, `channel`, `note`, `invoiceNumber`, `invoiceStatus`, `receiptCode`, `retailShopId`, `retailShopName`. `receiptCode` dạng `PAY-{id:D10}` là mã tra cứu từ payment đã lưu, không xác nhận thanh toán ngân hàng. Payment mới lưu RetailShopId của người ghi nhận; metadata lịch sử thiếu vẫn null/không ghi nhận, không gán ngược theo điểm bán hiện tại của nhân viên.
+
+`paymentHistoryGaps` trả `{ invoiceId, invoiceNumber, recordedPaidAmount, recordedPaymentTotal }` khi PaidAmount của bill không khớp tổng payment. Không tự tạo payment từ Amount/PaidAt của bill để lấp thiếu. UI cảnh báo đối soát; tổng lịch sử chỉ tính payment thực. Không có thay đổi schema DB trong bản sửa lịch sử này.
+
+Thu cước trực tiếp nhập lớn hơn Due trả 409, không tự giảm xuống Due. Khi lưu xung đột trả 409 yêu cầu tải lại lịch sử, không dùng khoản trả đủ của người khác làm bằng chứng thao tác này thành công. Direct payment chưa có operationId bền vững; sau mất phản hồi cần kiểm tra lịch sử trước khi gửi lại. [Kịch bản test và số tiền nhiều kỳ](payment-history-flow.md).
 
 | Method và đường dẫn | Quyền | Kết quả |
 | --- | --- | --- |
@@ -120,7 +128,52 @@ Customer có thêm các trường Review 1 tùy chọn: `taxId`, `email`, `conta
 | `GET /retail/billing/accounts/{accountId}` | Retail | Xem chi tiết cước tính đến thời điểm hiện tại của thuê bao (till-date billing breakdown). |
 | `POST /retail/billing/accounts/{accountId}/payment` | Retail | Thu tiền cước trực tiếp tại quầy bán lẻ (in-store retail counter). Body tùy chọn: `{ amount, note }`. Ghi nhận người thu và kênh thanh toán `"RetailOutlet"`. |
 
-Các POST hỗ trợ gửi kèm body JSON hoặc body trống (mặc định lấy toàn bộ số dư còn nợ). Trạng thái hóa đơn chuyển từ `NotBilled → Unpaid / PartiallyPaid → Paid` (hoặc `RolledOver` khi phát hành kỳ mới). Ngoài `"CityOffice"` và `"RetailOutlet"`, thanh toán trực tuyến từ Customer Portal (`POST /customer/billing/{accountId}/payments`) ghi nhận `PaymentTransaction.Channel = "CustomerPortal"`.
+### Sổ cọc theo Order
+
+| Method và đường dẫn | Quyền | Kết quả |
+| --- | --- | --- |
+| `GET /deposits?q=...` | Admin, Retail, Technical, Billing | Tối đa 100 sổ gần nhất, tìm Order ID/tên/điện thoại. Có snapshot cọc gốc, mức bulk, cọc phải thu, thực thu, đã hoàn, số dư, trạng thái đối soát và lịch sử giao dịch. |
+| `GET /deposits/{code}` | Admin, Retail, Technical, Billing | Sổ cọc của Order trước hoặc sau kích hoạt; Account ID có thể null. |
+| `POST /deposits/{code}/collections` | Retail, Billing | `{ amount, operationId, method, reference, note }`. Số tiền dương, tối đa hai chữ số thập phân. Chỉ thu sau Feasible, trước kích hoạt, không vượt phần còn phải thu; 409 nếu chưa đủ điều kiện hoặc còn cần đối soát. |
+| `POST /deposits/{code}/refunds` | Billing | Cùng payload tiền. Chỉ hoàn sau Cancelled/NotFeasible/PermanentlyInactive; không vượt số dư thực giữ. Không tự cấn trừ nợ hoặc phí hỏng thiết bị. |
+| `POST /deposits/{code}/reconcile` | Billing | `{ collectedAmount, refundedAmount, operationId, reference, note }`. Chỉ đối soát hồ sơ Legacy chưa rõ. Ghi tổng có chứng từ, không thu/hoàn tiền lần nữa; không được giảm tổng đã xác minh hoặc ghi hoàn vượt thu. Thu thừa trong lịch sử chỉ ghi khi có chứng từ, không nới giới hạn thu mới. |
+| `POST /orders/{code}/cancel` | Retail | `{ reason }`. Hủy đơn chưa kích hoạt; giữ snapshot và tiền cọc đã thu, chặn kích hoạt. Gửi lại đơn đã hủy không thêm lịch sử hủy. |
+| `GET /customer/deposits` | Customer | Chỉ sổ cọc của khách đang đăng nhập, không nhận customerId từ caller. Tài khoản bị vô hiệu hóa trả 403; khách không được gọi API giao dịch nhân viên. |
+
+`method` của giao dịch mới thuộc `Cash`, `BankTransfer`, `Cheque`. `reference` và `note` bắt buộc; `operationId` dài 16–64 ký tự chữ/số/gạch ngang (UUID phù hợp). Gửi lại cùng ID/nội dung trả cùng kết quả, không ghi thêm giao dịch; đổi nội dung trên ID cũ trả 409. Biên nhận cùng Order/loại giao dịch không được ghi hai lần. Version của sổ cọc và trạng thái Order/Connection được kiểm tra trong cùng giao dịch DB để chặn ghi tiền dựa trên trạng thái đã lỗi thời.
+
+Trạng thái sổ: `Uncollected`, `PartiallyCollected`, `Collected`, `Waived`, `RefundPending`, `Refunded`, `Closed`, `NeedsReconciliation`. `balance = collectedAmount - refundedAmount`; `refundableAmount` chỉ bằng số dư khi đã đóng và không cần đối soát. `remainingToCollect` bằng 0 với đơn đóng hoặc cần đối soát. `origin` là `Order` hoặc `Legacy`. Lịch sử có người thao tác, điểm bán, thời gian UTC, mã biên nhận và các tổng sau bản ghi; `sourceInvoiceId` đánh dấu phân bổ từ bill cũ.
+
+**Chính sách hóa đơn cước mới:** `rentalAmount = snapshotPrice × connectionCount`; `subtotal = rentalAmount + callUsageAmount + equipmentFee`; `taxAmount = round(subtotal × 0.1224, 2)`; `totalAmount = subtotal + taxAmount + previousDueBalance`. `depositAmount`, `discountAmount`, `discountPercent` bằng 0 cho bill mới. Không giảm cước theo bulk. `includeDeposit` chỉ còn để trả lỗi rõ cho client cũ: true trả 400; false hoặc bỏ qua đều không cộng cọc.
+
+Ví dụ 10 đường BB Basic: sổ cọc riêng gốc 5.000, giảm 25% là 1.250, phải thu 3.750 USD; hóa đơn cước là 2.525,40 USD. Nếu gói có policy advance, thu/phân bổ theo sổ riêng bên dưới; không cộng advance thành phụ phí. Thuế cọc vẫn là giả định cần xác nhận; luồng hiện tại không tính thuế cọc.
+
+Đọc/thu tiền trên hóa đơn cũ sử dụng số tiền đã lưu, không tính lại theo chính sách mới. Những bill này có thể còn `depositAmount` hoặc giảm cước lịch sử; nhãn hiển thị là `Recorded Discount` và `Deposit included in this invoice`. Backfill chỉ ghi tiền cọc đã thu khi có chứng từ thanh toán đầy đủ khớp một bill; các trường hợp còn lại cần đối soát. `refundStatus`/`refundAmount` của tài khoản là thông tin tương thích suy ra từ sổ cọc; `NeedsReconciliation` có số có thể hoàn bằng 0. Sau hoàn hết, `refundAmount` hiển thị tổng đã hoàn; khi còn chờ hoàn nó hiển thị số dư còn có thể hoàn.
+
+Luồng diễn tập và kiểm thử: [Thu và hoàn tiền đặt cọc](deposit-flow.md).
+
+Các POST thanh toán cước trực tiếp hỗ trợ gửi kèm body JSON hoặc body trống (mặc định lấy toàn bộ số dư còn nợ). Trạng thái hóa đơn chuyển từ `NotBilled → Unpaid / PartiallyPaid → Paid` (hoặc `RolledOver` khi phát hành kỳ mới). Ngoài `"CityOffice"` và `"RetailOutlet"`, thanh toán trực tuyến từ Customer Portal (`POST /customer/billing/{accountId}/payments`) ghi nhận `PaymentTransaction.Channel = "CustomerPortal"`; phân bổ advance dùng `"Advance"`.
+
+### Sổ advance và phân bổ thanh toán
+
+Đề không cung cấp mức advance gốc. Chính sách nhóm: Admin cấu hình `advancePerConnection` nullable trên payload tạo/sửa Plan; GET plans và public/plans trả cùng trường. Null/bỏ qua = chưa có policy, 0 = không yêu cầu, số dương = mức tùy chọn mỗi đường trước bulk (tối đa 999.999,99 USD, hai chữ số thập phân). Khi PUT cần gửi lại policy muốn giữ. Seed để null; xác nhận Request chốt snapshot trên Order, không hồi tố theo thay đổi gói.
+
+| Method và đường dẫn | Quyền | Request và kết quả |
+| --- | --- | --- |
+| `GET /advances?q=...` | Admin, Retail, Technical, Billing | Tối đa 100 sổ gần nhất; tìm Order/Account/tên/điện thoại; snapshot báo giá, thực nhận, đã phân bổ, đã hoàn, số dư, bill mở và lịch sử |
+| `GET /advances/{code}` | Admin, Retail, Technical, Billing | Chi tiết sổ theo Order ID, Account có thể null |
+| `POST /advances/{code}/collections` | Retail, Billing | `{ amount, operationId, method, reference, note }`. Nhận thực tế sau Feasible hoặc Connected, trước đóng; không vượt báo giá còn chưa thu. Không bắt buộc để kích hoạt; có thể thu phần còn lại sau kích hoạt |
+| `POST /advances/{code}/allocations` | Billing | `{ invoiceId, amount, operationId, reference, note }`. Chọn bill Unpaid/PartiallyPaid của chính Account; số tiền không vượt credit thực còn và Due. Ghi payment Channel Advance cùng giao dịch ledger, cập nhật Paid/Due/status; giữ nguyên phí, thuế và total |
+| `POST /advances/{code}/refunds` | Billing | Payload giống collections. Hoàn tối đa số dư thực chưa dùng sau Cancelled/NotFeasible/PermanentlyInactive; không hoàn phần đã phân bổ, không tự trừ nợ hoặc sửa cọc |
+| `GET /customer/advances` | Customer | Chỉ sổ của khách đang đăng nhập, không nhận customerId; khách chỉ đọc, không được gọi giao dịch nhân viên |
+
+Thu/hoàn dùng `Cash | BankTransfer | Cheque`; allocation ghi phương thức `AdvanceCredit`. Tất cả POST sổ advance bắt buộc amount dương hai chữ số thập phân, operationId, reference và note; quy tắc ID/chứng từ giống sổ cọc. Cùng ID/cùng nội dung/cùng actor trả sổ mới nhất mà không thêm payment hoặc tiền; khác nội dung trả 409. Không có API khách tự nạp advance hoặc tự xác nhận đã trả tiền.
+
+`AdvanceView` gồm `orderId`, `accountId`, `customerName`, `orderStatus`, `connectionStatus`, `perConnectionAmount`, `grossAmount`, `discountPercent`, `quotedAmount`, `receivedAmount`, `allocatedAmount`, `refundedAmount`, `availableAmount`, `remainingToCollect`, `refundableAmount`, `status`, `origin`, `openInvoices`, `transactions`. `availableAmount = receivedAmount - allocatedAmount - refundedAmount`; refundable chỉ mở sau đóng, remainingToCollect bằng 0 khi đóng. `openInvoices` có id/number/totalAmount/dueAmount/status; transaction lưu actor, shop, UTC, reference/note/method, số dư sau giao dịch và invoiceId/paymentId nếu là allocation.
+
+Trạng thái: `NotConfigured`, `NotRequired`, `Waived`, `Uncollected`, `PartiallyCollected`, `Available`, `FullyAllocated`, `RefundPending`, `Refunded`, `Closed`. Miễn 100% tạo quote 0 và credit 0, không miễn rental. Không tự dùng credit khi lập bill; nếu chuyển kỳ chỉ kết chuyển Due còn lại, không dùng lại payment Advance của bill cũ. Bill RolledOver/Paid hoặc vượt số dư trả 409; bill khác Account trả 404.
+
+Save nguyên tử và concurrency kiểm tra version sổ, trạng thái Order/Connection, Invoice.Status/PaidAt/PaidAmount/DueAmount. Allocation cạnh tranh refund/payment trực tiếp/chuyển kỳ không thể làm mất tiền hoặc thêm payment khi ledger không commit. Legacy chỉ tạo sổ policy null, các tổng 0; không tự chuyển cọc hoặc payment bill thành advance. [Luồng và 14 bước test](advance-flow.md).
 
 ## Vòng Đời Kết Nối & Tìm Kiếm Nâng Cao 5 Tiêu Chí (Group 3)
 
@@ -130,7 +183,7 @@ Các POST hỗ trợ gửi kèm body JSON hoặc body trống (mặc định l�
 | `GET /connections/{accountId}` | Retail, Technical, Admin | Chi tiết kết nối theo 16 ký tự Account ID, bao gồm lịch sử trạng thái, gói cước, thiết bị cấp phát và thông tin hoàn cọc. |
 | `POST /technical/connections/{accountId}/suspend` | Technical | `{ reason }` → 200 Connection. Chuyển trạng thái từ `Active` sang `TemporarilyInactive`. |
 | `POST /technical/connections/{accountId}/reactivate` | Technical | Body trống → 200 Connection. Khôi phục kết nối từ `TemporarilyInactive` về `Active`. |
-| `POST /technical/connections/{accountId}/terminate` | Technical | Body tùy chọn `{ note }` → 200 Connection. Chấm dứt kết nối sang `PermanentlyInactive` và tự động tính toán tiền hoàn trả đặt cọc (`refundAmount`, `refundStatus`), loại trừ hóa đơn `RolledOver` khỏi dư nợ và áp dụng chiết khấu số lượng nếu fallback tiền cọc. |
+| `POST /technical/connections/{accountId}/terminate` | Technical | `{ note }` → PermanentlyInactive; số dư cọc thực giữ trở thành có thể hoàn nếu đã đối soát. Không giải ngân và không tự trừ nợ/phí hỏng; Billing hoàn qua sổ cọc. |
 | `GET /orders/search?code=...&customerName=...&serviceType=...&phone=...&fromDate=...&toDate=...&status=...` | Retail, Technical, Admin | Tìm kiếm đơn hàng nâng cao kết hợp 5 tiêu chí (Mã Order ID/Account ID, Tên khách hàng, Loại dịch vụ `D/B/T` hoặc tên dịch vụ, Khoảng ngày UTC `fromDate`–`toDate`, Số điện thoại). |
 
 ## Hồ Sơ Chứng Từ Khách Hàng, Đổi Gói Cước & Hỏi Đáp / FAQ Động (Group 4)

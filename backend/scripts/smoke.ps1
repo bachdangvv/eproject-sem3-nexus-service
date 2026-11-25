@@ -9,6 +9,7 @@ $dll = Join-Path $project 'Nexus.Api/bin/Debug/net10.0/Nexus.Api.dll'
 $dotnet = if (Test-Path "$env:USERPROFILE\.dotnet\dotnet.exe") { "$env:USERPROFILE\.dotnet\dotnet.exe" } else { 'dotnet' }
 $origin = "http://127.0.0.1:$Port"
 $previousConnection = $env:ConnectionStrings__Demo
+$previousEventLogLevel = $env:Logging__EventLog__LogLevel__Default
 $server = $null
 $server2 = $null
 $data2 = $null
@@ -17,6 +18,17 @@ $passed = $false
 function Check($condition, [string]$label) {
     if (!$condition) { throw "FAIL $label" }
     Write-Host "PASS $label"
+}
+
+function Remove-SmokeData([string]$path) {
+    if (!$path -or !(Test-Path -LiteralPath $path)) { return }
+    $resolved = (Resolve-Path -LiteralPath $path).ProviderPath
+    $expectedParent = [IO.Path]::GetFullPath((Join-Path $project 'data'))
+    if ([IO.Path]::GetDirectoryName($resolved) -ne $expectedParent -or
+        [IO.Path]::GetFileName($resolved) -notmatch '^smoke-[a-f0-9]{32}$') {
+        throw "Refusing to remove data outside the isolated smoke directory: $resolved"
+    }
+    Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 function Call($client, [string]$path, [string]$method = 'GET', $body = $null, [int]$expected = 200) {
@@ -74,7 +86,20 @@ function SignIn([string]$role, [string]$username = "$($role.ToLowerInvariant()).
     return $client
 }
 
+function Collect-OrderDeposit($client, [string]$code) {
+    $deposit = Call $client "/deposits/$code"
+    if ($deposit.remainingToCollect -gt 0) {
+        return Call $client "/deposits/$code/collections" 'POST' @{
+            amount=$deposit.remainingToCollect;operationId=[Guid]::NewGuid().ToString();method='Cash';
+            reference=('SMOKE-' + [Guid]::NewGuid().ToString('N'));note='Fictitious test deposit receipt'
+        }
+    }
+    return $deposit
+}
+
 try {
+    # Keep test logs in the isolated files; Windows Event Log can require elevated OS permissions.
+    $env:Logging__EventLog__LogLevel__Default = 'None'
     $env:ConnectionStrings__Demo = "Data Source=$(Join-Path $data 'smoke.db');Foreign Keys=True"
     $server = Start-Process -FilePath $dotnet -ArgumentList @("`"$dll`"", '--demo', '--urls', $origin) `
         -WorkingDirectory (Join-Path $project 'Nexus.Api') -WindowStyle Hidden -PassThru `
@@ -175,6 +200,7 @@ try {
     Check ($pending[0].code -eq $order.code) 'Technical Pending queue and transition guards'
     $assessed = Call $technical "$route/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
     Check ($assessed.status -eq 'Feasible') 'feasible assessment'
+    $null = Collect-OrderDeposit $retail $order.code
     $connected = Call $technical "$route/connection" 'POST' $null 201
     $again = Call $technical "$route/connection" 'POST'
     Check ($connected.status -eq 'Connected' -and $connected.accountId -ceq 'B101000000000004' -and
@@ -206,8 +232,8 @@ try {
 
     $null = Call $billing "$billingRoute/payment" 'POST' $null 409
     $bill = Call $billing $billingRoute 'POST'
-    $expectedTotal = [Math]::Round($bb.price * 1.1224, 2) + 500.00 # $225 + $27.54 tax (12.24%) + $500 refundable security deposit
-    Check ($bill.rentalAmount -eq $bb.price -and $bill.depositAmount -eq 500.00 -and $bill.taxAmount -eq 27.54 -and $bill.totalAmount -eq $expectedTotal -and $bill.status -eq 'Unpaid') 'detailed invoice: rental snapshot, deposit, 12.24% tax, and unpaid status'
+    $expectedTotal = [Math]::Round($bb.price * 1.1224, 2) # Service only: deposit was collected separately before activation
+    Check ($bill.rentalAmount -eq $bb.price -and $bill.depositAmount -eq 0 -and $bill.taxAmount -eq 27.54 -and $bill.totalAmount -eq $expectedTotal -and $bill.status -eq 'Unpaid') 'service invoice: rental snapshot, no duplicate deposit, 12.24% tax, and unpaid status'
     $publicAfterBill = Call $public "/public/track/account/$($connected.accountId)"
     Check ($publicAfterBill.dueAmount -eq $expectedTotal) 'public account tracking reflects unpaid dueAmount'
 
@@ -219,8 +245,8 @@ try {
     Check ($retailLookup.status -eq 'Unpaid' -and $retailLookup.totalAmount -eq $expectedTotal) 'Retail till-date billing view'
 
     # Retail in-store partial payment collection
-    $partialPay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' @{amount=252.54;note='Cash payment at outlet'}
-    Check ($partialPay.status -eq 'PartiallyPaid' -and $partialPay.paidAmount -eq 252.54 -and $partialPay.dueAmount -eq 500.00) 'Retail partial in-store payment collection'
+    $partialPay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' @{amount=100;note='Cash payment at outlet'}
+    Check ($partialPay.status -eq 'PartiallyPaid' -and $partialPay.paidAmount -eq 100 -and $partialPay.dueAmount -eq 152.54) 'Retail partial in-store payment collection'
 
     # Settle remaining balance by Billing
     $paid = Call $billing "$billingRoute/payment" 'POST'
@@ -318,6 +344,7 @@ try {
     $equipOrder = Call $retail "/requests/$($equipRequest.id)/confirm" 'POST' $null 201
     $equipRoute = "/orders/$($equipOrder.code)"
     $null = Call $technical "$equipRoute/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
+    $null = Collect-OrderDeposit $retail $equipOrder.code
     $equipConnected = Call $technical "$equipRoute/connection" 'POST' @{productId=$invProduct.id} 201
     Check ($equipConnected.status -eq 'Connected' -and $equipConnected.assignedProductId -eq $invProduct.id) 'connection activated with equipment allocation'
     $productAfterAllocation = (Call $admin '/products' | Where-Object id -eq $invProduct.id)
@@ -328,6 +355,7 @@ try {
     $bulkReq = Call $retail '/requests' 'POST' @{customerId=$customer.id;planId=$bb.id;hasNexusLandline=$false;connectionCount=2} 201
     $bulkOrder = Call $retail "/requests/$($bulkReq.id)/confirm" 'POST' $null 201
     $null = Call $technical "/orders/$($bulkOrder.code)/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
+    $null = Collect-OrderDeposit $retail $bulkOrder.code
     $null = Call $technical "/orders/$($bulkOrder.code)/connection" 'POST' @{productId=$bulkEquipProd.id} 400
     $null = Call $technical "/products/$($bulkEquipProd.id)" 'PUT' @{name='Smoke Bulk ONT';description='Multi-unit stock test';active=$true;quantityInStock=5;replacementPrice=50}
     $bulkConn = Call $technical "/orders/$($bulkOrder.code)/connection" 'POST' @{productId=$bulkEquipProd.id} 201
@@ -406,8 +434,8 @@ try {
     # Terminate connection and verify security deposit refund calculation and disbursement
     $terminatedConn = Call $technical "/technical/connections/$($equipConnected.accountId)/terminate" 'POST' @{note='Subscriber relocated outside coverage'}
     Check ($terminatedConn.status -eq 'PermanentlyInactive' -and $terminatedConn.refundStatus -eq 'Pending' -and $terminatedConn.refundAmount -eq 500.00) 'connection permanently terminated with security deposit refund calculated'
-    $refundedView = Call $billing "/billing/accounts/$($equipConnected.accountId)/refund" 'POST' @{note='Cheque #1001'}
-    Check ($refundedView.refundStatus -eq 'Refunded' -and $refundedView.refundAmount -eq 500.00 -and $refundedView.refundedAt) 'security deposit refund disbursed'
+    $refundedView = Call $billing "/deposits/$($equipOrder.code)/refunds" 'POST' @{amount=500;operationId=[Guid]::NewGuid().ToString();method='Cheque';reference='CHEQUE-1001';note='Withdrawal refund'}
+    Check ($refundedView.status -eq 'Refunded' -and $refundedView.refundedAmount -eq 500.00 -and $refundedView.balance -eq 0) 'security deposit refund disbursed'
     $null = Call $billing "/billing/accounts/$($equipConnected.accountId)/refund" 'POST' @{note='Duplicate refund'} 409
 
     # 11. Customer Queries & Dynamic FAQ Catalog
@@ -500,6 +528,7 @@ try {
     $custOrder = Call $retail "/requests/$($custReq.id)/confirm" 'POST' $null 201
     $null = Call $regClient "/customer/orders/$($custOrder.code)/feedback" 'POST' @{rating=5;comment='Too early'} 409
     $null = Call $technical "/orders/$($custOrder.code)/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
+    $null = Collect-OrderDeposit $retail $custOrder.code
     $custConnOrder = Call $technical "/orders/$($custOrder.code)/connection" 'POST' $null 201
     $custAccountId = $custConnOrder.accountId
 
@@ -547,6 +576,58 @@ try {
     $null = Call $regClient "/customer/orders/$($custOrder.code)/feedback" 'POST' @{rating=4;comment='Duplicate feedback attempt'} 409
     $custOrderDetail = Call $regClient "/customer/orders/$($custOrder.code)"
     Check ($custFeedback.rating -eq 5 -and $custOrderDetail.feedback.Count -eq 1 -and $custOrderDetail.feedback[0].comment -eq 'Great self-service experience!') 'customer feedback persisted on order detail and duplicate rejected with 409'
+
+    # Bulk policy regression: independently specified boundaries, all services, and recurring bills.
+    $bulkCases = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../docs/fixtures/bulk-discount-cases.json') -Raw | ConvertFrom-Json
+    $bulkPlans = @(
+        @{ type = 'B'; plan = $bb; rental = [decimal]225; deposit = [decimal]500 },
+        @{ type = 'D'; plan = $dial; rental = [decimal]50; deposit = [decimal]325 },
+        @{ type = 'T'; plan = $landlineTariffPlan; rental = [decimal]125; deposit = [decimal]250 }
+    )
+    foreach ($bulkCase in $bulkCases) {
+        foreach ($bulkPlan in $bulkPlans) {
+            $count = [int]$bulkCase.count
+            $bulkRequest = Call $retail '/requests' 'POST' @{customerId=$customer.id;planId=$bulkPlan.plan.id;hasNexusLandline=$true;connectionCount=$count} 201
+            $bulkTestOrder = Call $retail "/requests/$($bulkRequest.id)/confirm" 'POST' $null 201
+            $null = Call $technical "/orders/$($bulkTestOrder.code)/assessment" 'POST' @{distanceOk=$true;serverAvailable=$true}
+            $bulkDeposit = Collect-OrderDeposit $retail $bulkTestOrder.code
+            $bulkTestConnection = Call $technical "/orders/$($bulkTestOrder.code)/connection" 'POST' $null 201
+            $bulkRoute = "/billing/accounts/$($bulkTestConnection.accountId)"
+            $expectedRental = $bulkPlan.rental * $count
+            $expectedDeposit = [decimal]$bulkCase.deposit.($bulkPlan.type)
+            $expectedDiscount = $bulkPlan.deposit * $count - $expectedDeposit
+            $firstBulkBill = Call $billing $bulkRoute 'POST'
+            Check ($firstBulkBill.rentalAmount -eq $expectedRental -and $firstBulkBill.subtotal -eq $expectedRental -and
+                $bulkDeposit.requiredAmount -eq $expectedDeposit -and ($bulkDeposit.grossAmount - $bulkDeposit.requiredAmount) -eq $expectedDiscount -and
+                $bulkDeposit.discountPercent -eq $bulkCase.percent -and $firstBulkBill.depositAmount -eq 0 -and $firstBulkBill.discountAmount -eq 0 -and
+                $firstBulkBill.taxAmount -eq [Math]::Round($expectedRental * [decimal]0.1224, 2)) "bulk $($bulkPlan.type) $count lines: deposit-only discount and full rental tax base"
+
+            $null = Call $billing "$bulkRoute/payment" 'POST'
+            $nextBulkBill = Call $billing $bulkRoute 'POST' @{periodStart='2027-01-01T00:00:00Z';periodEnd='2027-02-01T00:00:00Z'}
+            $storedFirst = @($nextBulkBill.invoices | Where-Object id -eq $firstBulkBill.invoiceId)[0]
+            Check ($nextBulkBill.rentalAmount -eq $expectedRental -and $nextBulkBill.subtotal -eq $expectedRental -and
+                $nextBulkBill.depositAmount -eq 0 -and $nextBulkBill.discountAmount -eq 0 -and $nextBulkBill.discountPercent -eq 0 -and
+                $storedFirst.totalAmount -eq $firstBulkBill.totalAmount -and $storedFirst.discountAmount -eq $firstBulkBill.discountAmount) "bulk $($bulkPlan.type) $count lines: recurring rental stays full, no default repeat deposit, prior amounts preserved"
+            if ($bulkPlan.type -eq 'B' -and $count -eq 10) {
+                Check ($firstBulkBill.totalAmount -eq 2525.40 -and $nextBulkBill.totalAmount -eq 2525.40 -and $bulkDeposit.collectedAmount -eq 3750) '10-line Broadband: deposit receipt 3750 separate from each service invoice 2525.40'
+            }
+            if ($bulkPlan.type -eq 'B' -and $count -eq 51) {
+                Check ($firstBulkBill.totalAmount -eq 12879.54 -and $nextBulkBill.totalAmount -eq 12879.54) '51-line Broadband waives only deposit, never recurring rental'
+            }
+        }
+    }
+
+    # The last matrix account is Landline with 51 lines and an unpaid recurring bill of $7,155.30.
+    # Usage/equipment are charged in full, and carried debt is not discounted or taxed again.
+    $usageBulkBill = Call $billing $bulkRoute 'POST' @{localMinutes=10;stdMinutes=2;mobileMinutes=3;equipmentFee=10.25;periodStart='2027-02-01T00:00:00Z';periodEnd='2027-03-01T00:00:00Z'}
+    Check ($usageBulkBill.callUsageAmount -eq 14.50 -and $usageBulkBill.equipmentFee -eq 10.25 -and
+        $usageBulkBill.subtotal -eq 6399.75 -and $usageBulkBill.taxAmount -eq 783.33 -and
+        $usageBulkBill.previousDueBalance -eq 7155.30 -and $usageBulkBill.totalAmount -eq 14338.38 -and
+        $usageBulkBill.discountAmount -eq 0) 'bulk never discounts usage, equipment or carried debt; prior debt is not taxed twice'
+
+    . (Join-Path $PSScriptRoot 'deposit-scenarios.ps1')
+    . (Join-Path $PSScriptRoot 'advance-scenarios.ps1')
+    . (Join-Path $PSScriptRoot 'payment-history-scenarios.ps1')
 
     # 16. Isolated server2 ($Port + 1): Reserved/Duplicate Register, SUSPENDED Customer & Deactivated Employee Blocking + Reactivation
     $data2 = Join-Path $project ('data/smoke-' + [Guid]::NewGuid().ToString('N'))
@@ -621,6 +702,7 @@ try {
     throw
 } finally {
     $env:ConnectionStrings__Demo = $previousConnection
+    $env:Logging__EventLog__LogLevel__Default = $previousEventLogLevel
     if ($server -and !$server.HasExited) {
         Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
         $null = $server.WaitForExit(3000)
@@ -629,10 +711,8 @@ try {
         Stop-Process -Id $server2.Id -Force -ErrorAction SilentlyContinue
         $null = $server2.WaitForExit(3000)
     }
-    if ($passed -and (Test-Path -LiteralPath $data)) {
-        Remove-Item -LiteralPath $data -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    if ($passed -and $data2 -and (Test-Path -LiteralPath $data2)) {
-        Remove-Item -LiteralPath $data2 -Recurse -Force -ErrorAction SilentlyContinue
+    if ($passed) {
+        Remove-SmokeData $data
+        Remove-SmokeData $data2
     }
 }

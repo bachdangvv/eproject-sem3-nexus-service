@@ -30,6 +30,7 @@ import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import type {
   BillingStatus,
+  BillingView,
   CustomerQueryStatus,
   CustomerStatus,
   FeedbackInput,
@@ -61,6 +62,13 @@ const PUBLIC_SERVICE_LABEL: Record<PublicServiceType, string> = {
 export function formatUsd(value: number): string {
   const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
   return `$${rounded.toFixed(2)}`;
+}
+
+// Invoice paidAt marks full settlement; partial cash and advance payments have their own timestamps.
+export function lastPaymentAt(record: Pick<BillingView, 'paidAt' | 'payments'>): string | null {
+  return (record.payments ?? []).reduce<string | null>((latest, payment) =>
+    !latest || Date.parse(payment.paidAt) > Date.parse(latest) ? payment.paidAt : latest,
+  record.paidAt);
 }
 
 export function CopyableId({
@@ -151,6 +159,8 @@ export function OrderStatusPill({ status }: { status: OrderStatus | string }) {
       return <StatusLabel variant="error" label="Not Feasible" />;
     case 'Connected':
       return <StatusLabel variant="success" label="Connected" />;
+    case 'Cancelled':
+      return <StatusLabel variant="neutral" label="Cancelled" />;
     case 'Active':
       return <StatusLabel variant="success" label="Active" />;
     case 'ACTIVE':
@@ -218,6 +228,7 @@ export function QueryStatusPill({ status }: { status: CustomerQueryStatus | stri
 }
 
 export function OrderLifecycleStepper({ status }: { status: OrderStatus | string }) {
+  if (status === 'Cancelled') return <StatusLabel variant="neutral" label="Cancelled before activation" />;
   const activeStep =
     status === 'Pending'
       ? 0

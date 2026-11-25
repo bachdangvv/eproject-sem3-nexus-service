@@ -11,9 +11,81 @@ export type ServiceTypeCode = 'D' | 'B' | 'T';
 
 export type PublicServiceType = 'DIAL_UP' | 'BROADBAND' | 'LANDLINE';
 
-export type OrderStatus = 'Pending' | 'Feasible' | 'NotFeasible' | 'Connected';
+export type OrderStatus = 'Pending' | 'Feasible' | 'NotFeasible' | 'Connected' | 'Cancelled';
+
+export interface DepositTransactionView {
+  id: number;
+  operationId: string;
+  kind: string;
+  amount: number;
+  method: string;
+  reference: string;
+  note: string;
+  at: string;
+  actor?: string | null;
+  retailShopId?: number | null;
+  sourceInvoiceId?: number | null;
+  collectedAfter: number;
+  refundedAfter: number;
+}
+
+export interface DepositView {
+  orderId: string;
+  accountId?: string | null;
+  customerName: string;
+  orderStatus: OrderStatus;
+  connectionStatus?: string | null;
+  grossAmount: number;
+  discountPercent: number;
+  requiredAmount: number;
+  collectedAmount: number;
+  refundedAmount: number;
+  balance: number;
+  remainingToCollect: number;
+  refundableAmount: number;
+  needsReconciliation: boolean;
+  origin: string;
+  status: string;
+  transactions: DepositTransactionView[];
+}
 
 export type BillingStatus = 'NotBilled' | 'Unpaid' | 'PartiallyPaid' | 'Paid';
+
+export interface AdvanceTransactionView {
+  id: number;
+  kind: string;
+  amount: number;
+  method: string;
+  reference: string;
+  note: string;
+  at: string;
+  actor: string;
+  retailShopId?: number | null;
+  invoiceId?: number | null;
+  paymentId?: number | null;
+  availableAfter: number;
+}
+export interface AdvanceView {
+  orderId: string;
+  accountId?: string | null;
+  customerName: string;
+  orderStatus: OrderStatus;
+  connectionStatus?: string | null;
+  perConnectionAmount?: number | null;
+  grossAmount: number;
+  discountPercent: number;
+  quotedAmount: number;
+  receivedAmount: number;
+  allocatedAmount: number;
+  refundedAmount: number;
+  availableAmount: number;
+  remainingToCollect: number;
+  refundableAmount: number;
+  status: string;
+  origin: string;
+  openInvoices: Array<{ id: number; number: string; totalAmount: number; dueAmount: number; status: string }>;
+  transactions: AdvanceTransactionView[];
+}
 
 export type CustomerStatus = 'ACTIVE' | 'SUSPENDED';
 
@@ -33,6 +105,7 @@ export interface CityView {
 }
 
 export interface PlanView {
+  advancePerConnection?: number | null;
   id: number;
   name: string;
   type: ServiceTypeCode;
@@ -96,6 +169,7 @@ export interface RequestView {
 }
 
 export interface OrderView {
+  deposit?: DepositView | null;
   code: string;
   requestId: number;
   status: OrderStatus;
@@ -165,6 +239,12 @@ export interface PaymentItemView {
   paidByUsername: string;
   channel: string;
   note: string | null;
+  invoiceNumber: string;
+  invoiceStatus: string;
+  receiptCode: string;
+  paidByDisplayName: string | null;
+  retailShopId: number | null;
+  retailShopName: string | null;
 }
 
 export interface BillingView {
@@ -202,6 +282,7 @@ export interface BillingView {
   refundedAt?: string | null;
   invoices?: InvoiceItemView[];
   payments?: PaymentItemView[];
+  paymentHistoryGaps?: Array<{ invoiceId: number; invoiceNumber: string; recordedPaidAmount: number; recordedPaymentTotal: number }>;
 }
 
 export interface PublicTrackView {
@@ -230,6 +311,7 @@ export interface CityUpdateInput {
 }
 
 export interface PlanInput {
+  advancePerConnection?: number | null;
   name: string;
   type: ServiceTypeCode;
   description?: string | null;
@@ -519,6 +601,7 @@ export type ConnectionStatus = 'Active' | 'TemporarilyInactive' | 'PermanentlyIn
 export type RefundStatus = 'Pending' | 'Refunded' | 'Processed' | 'Forfeited' | 'None' | string;
 
 export interface ConnectionLifecycleView {
+  deposit?: DepositView | null;
   id: number;
   accountId: string;
   orderId: number;

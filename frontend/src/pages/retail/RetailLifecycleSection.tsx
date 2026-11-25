@@ -557,7 +557,7 @@ export function RetailLifecycleSection({
                               SECURITY_DEPOSIT_USD[timelineTarget.type as ServiceTypeCode] ?? 0,
                             )}
                           </MetadataListItem>
-                          <MetadataListItem label="Final Net Refund Amount">
+                          <MetadataListItem label="Deposit Refund Amount">
                             <Text weight="semibold">
                               {timelineTarget.refundAmount !== null && timelineTarget.refundAmount !== undefined
                                 ? formatUsd(timelineTarget.refundAmount)

@@ -45,6 +45,8 @@ builder.Services.AddScoped<OperationsService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<CustomerPortalService>();
+builder.Services.AddScoped<DepositService>();
+builder.Services.AddScoped<AdvanceService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -116,4 +118,6 @@ api.MapBilling();
 api.MapInventory();
 api.MapPublic();
 api.MapCustomer();
+api.MapDeposits();
+api.MapAdvances();
 app.Run();

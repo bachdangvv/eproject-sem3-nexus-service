@@ -1,0 +1,82 @@
+[
+  {
+    "count": 9,
+    "percent": 0,
+    "deposit": {
+      "B": 4500,
+      "D": 2925,
+      "T": 2250
+    },
+    "advanceAt100": 900
+  },
+  {
+    "count": 10,
+    "percent": 25,
+    "deposit": {
+      "B": 3750,
+      "D": 2437.5,
+      "T": 1875
+    },
+    "advanceAt100": 750
+  },
+  {
+    "count": 14,
+    "percent": 25,
+    "deposit": {
+      "B": 5250,
+      "D": 3412.5,
+      "T": 2625
+    },
+    "advanceAt100": 1050
+  },
+  {
+    "count": 15,
+    "percent": 50,
+    "deposit": {
+      "B": 3750,
+      "D": 2437.5,
+      "T": 1875
+    },
+    "advanceAt100": 750
+  },
+  {
+    "count": 24,
+    "percent": 50,
+    "deposit": {
+      "B": 6000,
+      "D": 3900,
+      "T": 3000
+    },
+    "advanceAt100": 1200
+  },
+  {
+    "count": 25,
+    "percent": 75,
+    "deposit": {
+      "B": 3125,
+      "D": 2031.25,
+      "T": 1562.5
+    },
+    "advanceAt100": 625
+  },
+  {
+    "count": 50,
+    "percent": 75,
+    "deposit": {
+      "B": 6250,
+      "D": 4062.5,
+      "T": 3125
+    },
+    "advanceAt100": 1250
+  },
+  {
+    "count": 51,
+    "percent": 100,
+    "deposit": {
+      "B": 0,
+      "D": 0,
+      "T": 0
+    },
+    "advanceAt100": 0
+  }
+]

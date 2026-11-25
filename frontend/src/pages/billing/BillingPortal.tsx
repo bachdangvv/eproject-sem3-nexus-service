@@ -15,6 +15,8 @@ import type { BillingView } from '../../types/nexus';
 import { BillingAccountsSection } from './BillingAccountsSection';
 import { BillingPaymentsSection } from './BillingPaymentsSection';
 import { BillingRegistrySection } from './BillingRegistrySection';
+import { DepositsSection } from '../shared/DepositsSection';
+import { AdvancesSection } from '../shared/AdvancesSection';
 import { BILLING_SECTION_META, type BillingSection } from './billingTypes';
 
 const SECTION_ROUTE_MAP: Record<BillingSection, RoutePathValue> = {
@@ -32,6 +34,7 @@ export function BillingPortal({
 
   const [prevSection, setPrevSection] = useState<BillingSection>(section);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [creditRefresh, setCreditRefresh] = useState(0);
   const [itemCount, setItemCount] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -93,6 +96,7 @@ export function BillingPortal({
   }, [refreshTrigger]);
 
   const handleRecordUpsert = useCallback((record: BillingView) => {
+    setCreditRefresh(prev => prev + 1);
     setRecords((prev) => {
       const index = prev.findIndex((item) => item.accountId === record.accountId);
       if (index >= 0) {
@@ -203,6 +207,8 @@ export function BillingPortal({
         </HStack>
       </Card>
 
+      <DepositsSection role="Billing" refreshTrigger={refreshTrigger} />
+      <AdvancesSection role="Billing" refreshTrigger={refreshTrigger + creditRefresh} onChanged={handleRefresh} />
       {renderSection()}
     </VStack>
   );

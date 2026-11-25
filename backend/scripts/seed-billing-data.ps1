@@ -1,4 +1,4 @@
-# Seed rich, realistic demo data for Billing & Retail portals
+﻿# Seed rich, realistic demo data for Billing & Retail portals
 $ErrorActionPreference = 'Stop'
 $origin = 'http://127.0.0.1:5168'
 
@@ -148,6 +148,14 @@ foreach ($item in $ordersToProcess) {
         note = "Feasibility verified for $($item.tag)"
     } 200 | Out-Null
 
+    $deposit = Call $retail "/deposits/$code" 'GET' $null 200
+    if ($deposit.remainingToCollect -gt 0) {
+        Call $retail "/deposits/$code/collections" 'POST' @{
+            amount=$deposit.remainingToCollect;operationId=[Guid]::NewGuid().ToString();method='Cash';
+            reference=('DEMO-' + [Guid]::NewGuid().ToString('N'));note='Fictitious demo deposit receipt'
+        } 200 | Out-Null
+    }
+
     Write-Host "Activating connection for $code..."
     $connected = Call $tech "/orders/$code/connection" 'POST' $null 201
     $connectedAccounts += @{
@@ -161,12 +169,12 @@ foreach ($item in $ordersToProcess) {
 # Step 5: Billing & Invoicing (Billing & Retail)
 $bill = SignIn 'Billing'
 
-# Account 0: Cust 1 (Broadband 1 line) -> Invoiced Unpaid, then Retail collects partial payment $300.00
+# Account 0: Cust 1 (Broadband 1 line) -> Invoiced Unpaid, then Retail collects partial payment $100.00
 Write-Host "Generating bill for Account $($connectedAccounts[0].accountId)..."
 $inv0 = Call $bill "/billing/accounts/$($connectedAccounts[0].accountId)" 'POST' $null 200
 Write-Host "Recording partial retail payment on Account $($connectedAccounts[0].accountId)..."
 Call $retail "/retail/billing/accounts/$($connectedAccounts[0].accountId)/payment" 'POST' @{
-    amount = 300.0
+    amount = 100.0
     note = "Counter payment: Cash collected at Retail Outlet"
 } 200 | Out-Null
 
@@ -207,9 +215,9 @@ Write-Host ""
 Write-Host "=== SEEDING SUMMARY ==="
 Write-Host "Successfully created 6 billing accounts:"
 Write-Host "1. $($connectedAccounts[0].accountId): Broadband 1 line - Status: PartiallyPaid (Total invoiced, partial cash payment at Retail)"
-Write-Host "2. $($connectedAccounts[1].accountId): Broadband 15 lines - Status: Unpaid (50% Bulk discount applied on rental & deposit)"
+Write-Host "2. $($connectedAccounts[1].accountId): Broadband 15 lines - Status: Unpaid (50% security deposit discount; full plan rental)"
 Write-Host "3. $($connectedAccounts[2].accountId): Dial-Up 1 line - Status: Paid (Fully settled via City Office)"
-Write-Host "4. $($connectedAccounts[3].accountId): Landline 25 lines - Status: PartiallyPaid (75% Bulk discount, installment 1 paid)"
+Write-Host "4. $($connectedAccounts[3].accountId): Landline 25 lines - Status: PartiallyPaid (75% security deposit discount; full plan rental, installment 1 paid)"
 Write-Host "5. $($connectedAccounts[4].accountId): Landline 1 line - Status: Unpaid (Includes Local/STD/Mobile call charges + $25 equipment fee)"
 Write-Host "6. $($connectedAccounts[5].accountId): Broadband 1 line - Status: NotBilled (Connection active, ready for initial invoice)"
 Write-Host "All accounts are now live in the database!"

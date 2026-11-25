@@ -55,6 +55,7 @@ interface PlanFormState {
   type: ServiceTypeCode;
   validityMonths: string;
   priceText: string;
+  advanceText: string;
   hoursAllowanceText: string;
   speedKbpsText: string;
   localCallRateText: string;
@@ -69,6 +70,7 @@ interface PlanFieldErrors {
   type?: string;
   validityMonths?: string;
   price?: string;
+  advancePerConnection?: string;
   hoursAllowance?: string;
   speedKbps?: string;
   localCallRate?: string;
@@ -82,6 +84,7 @@ const DEFAULT_CREATE_FORM: PlanFormState = {
   type: 'B',
   validityMonths: '1',
   priceText: '',
+  advanceText: '',
   hoursAllowanceText: '',
   speedKbpsText: '',
   localCallRateText: '0',
@@ -125,6 +128,7 @@ function parseCallRateField(raw: string, label: string): { valid: true; value: n
 function validatePlanForm(form: PlanFormState): {
   errors: PlanFieldErrors;
   parsedPrice: number | null;
+  parsedAdvance: number | null;
   parsedValidityMonths: number;
   parsedHoursAllowance: number | null;
   parsedSpeedKbps: number | null;
@@ -158,6 +162,11 @@ function validatePlanForm(form: PlanFormState): {
   if (!priceCheck.valid) {
     errors.price = priceCheck.message;
   }
+
+  const advanceCheck = form.advanceText.trim() ? validatePlanPrice(form.advanceText) : { valid: true as const, value: null };
+  if (!advanceCheck.valid) errors.advancePerConnection = advanceCheck.message;
+  else if (advanceCheck.value !== null && advanceCheck.value > 999999.99)
+    errors.advancePerConnection = 'Advance per connection must not exceed $999,999.99.';
 
   const hoursCheck = parseOptionalPositiveInt(
     form.hoursAllowanceText,
@@ -204,6 +213,7 @@ function validatePlanForm(form: PlanFormState): {
   return {
     errors,
     parsedPrice: priceCheck.valid ? priceCheck.value : null,
+    parsedAdvance: advanceCheck.valid ? advanceCheck.value : null,
     parsedValidityMonths: Number.isInteger(parsedValidityMonths) ? parsedValidityMonths : 1,
     parsedHoursAllowance: hoursCheck.valid ? hoursCheck.value : null,
     parsedSpeedKbps: speedCheck.valid ? speedCheck.value : null,
@@ -318,6 +328,7 @@ export function PlansSection({
       type: plan.type,
       validityMonths: String(plan.validityMonths ?? 1),
       priceText: String(plan.price),
+      advanceText: plan.advancePerConnection == null ? '' : String(plan.advancePerConnection),
       hoursAllowanceText: plan.hoursAllowance != null ? String(plan.hoursAllowance) : '',
       speedKbpsText: plan.speedKbps != null ? String(plan.speedKbps) : '',
       localCallRateText: String(plan.localCallRate ?? 0),
@@ -336,6 +347,7 @@ export function PlansSection({
     const {
       errors,
       parsedPrice,
+      parsedAdvance,
       parsedValidityMonths,
       parsedHoursAllowance,
       parsedSpeedKbps,
@@ -354,6 +366,7 @@ export function PlansSection({
       type: createForm.type,
       description: createForm.description.trim() || null,
       price: parsedPrice,
+      advancePerConnection: parsedAdvance,
       active: createForm.active,
       localCallRate: parsedLocalRate,
       stdCallRate: parsedStdRate,
@@ -380,6 +393,7 @@ export function PlansSection({
         type: serverFields.type ?? prev.type,
         validityMonths: serverFields.validitymonths ?? prev.validityMonths,
         price: serverFields.price ?? prev.price,
+        advancePerConnection: serverFields.advanceperconnection ?? prev.advancePerConnection,
         hoursAllowance: serverFields.hoursallowance ?? prev.hoursAllowance,
         speedKbps: serverFields.speedkbps ?? prev.speedKbps,
         localCallRate: serverFields.localcallrate ?? prev.localCallRate,
@@ -402,6 +416,7 @@ export function PlansSection({
     const {
       errors,
       parsedPrice,
+      parsedAdvance,
       parsedValidityMonths,
       parsedHoursAllowance,
       parsedSpeedKbps,
@@ -420,6 +435,7 @@ export function PlansSection({
       type: editForm.type,
       description: editForm.description.trim() || null,
       price: parsedPrice,
+      advancePerConnection: parsedAdvance,
       active: editForm.active,
       localCallRate: parsedLocalRate,
       stdCallRate: parsedStdRate,
@@ -446,6 +462,7 @@ export function PlansSection({
         type: serverFields.type ?? prev.type,
         validityMonths: serverFields.validitymonths ?? prev.validityMonths,
         price: serverFields.price ?? prev.price,
+        advancePerConnection: serverFields.advanceperconnection ?? prev.advancePerConnection,
         hoursAllowance: serverFields.hoursallowance ?? prev.hoursAllowance,
         speedKbps: serverFields.speedkbps ?? prev.speedKbps,
         localCallRate: serverFields.localcallrate ?? prev.localCallRate,
@@ -472,6 +489,7 @@ export function PlansSection({
         description: plan.description || null,
         price: plan.price,
         active: nextActive,
+        advancePerConnection: plan.advancePerConnection ?? null,
         localCallRate: plan.localCallRate ?? 0,
         stdCallRate: plan.stdCallRate ?? 0,
         mobileMsgRate: plan.mobileMsgRate ?? 0,
@@ -571,6 +589,12 @@ export function PlansSection({
         if (row.speedKbps != null) parts.push(`${row.speedKbps} Kbps`);
         return <Text type="supporting">{parts.length > 0 ? parts.join(' · ') : '—'}</Text>;
       },
+    },
+    {
+      key: 'advancePerConnection',
+      header: 'Advance / Line',
+      width: pixel(150),
+      renderCell: row => <Text type="supporting">{row.advancePerConnection == null ? 'Not configured' : formatUsd(row.advancePerConnection)}</Text>,
     },
     {
       key: 'callRates',
@@ -832,6 +856,18 @@ export function PlansSection({
                       }
                     />
                     <TextInput
+                      label="Optional Advance per Connection (USD)"
+                      inputMode="decimal"
+                      isOptional
+                      description="Blank: policy not configured. Zero: no advance. Positive: optional prepayment before bulk discount, credited only when actually received. Changes apply to future confirmed Orders."
+                      value={createForm.advanceText}
+                      onChange={value => {
+                        setCreateForm(prev => ({ ...prev, advanceText: value }));
+                        setCreateFieldErrors(prev => ({ ...prev, advancePerConnection: undefined }));
+                      }}
+                      status={createFieldErrors.advancePerConnection ? { type: 'error', message: createFieldErrors.advancePerConnection } : undefined}
+                    />
+                    <TextInput
                       label="Hours Allowance"
                       placeholder="e.g. 30"
                       inputMode="numeric"
@@ -1070,6 +1106,18 @@ export function PlansSection({
                           ? { type: 'error', message: editFieldErrors.price }
                           : undefined
                       }
+                    />
+                    <TextInput
+                      label="Optional Advance per Connection (USD)"
+                      inputMode="decimal"
+                      isOptional
+                      description="Blank: policy not configured. Zero: no advance. Positive: optional prepayment before bulk discount, credited only when actually received. Changes apply to future confirmed Orders."
+                      value={editForm.advanceText}
+                      onChange={value => {
+                        setEditForm(prev => ({ ...prev, advanceText: value }));
+                        setEditFieldErrors(prev => ({ ...prev, advancePerConnection: undefined }));
+                      }}
+                      status={editFieldErrors.advancePerConnection ? { type: 'error', message: editFieldErrors.advancePerConnection } : undefined}
                     />
                     <TextInput
                       label="Hours Allowance"

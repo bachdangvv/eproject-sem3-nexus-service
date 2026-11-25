@@ -27,4 +27,11 @@ npm run build
 
 # Kiểm tra quy tắc mã nguồn với Oxlint
 npm run lint
+
+# Kiểm thử dự toán: bulk giảm cọc/advance quote, cước thuê bao tính đủ
+npm test
 ```
+
+`AdvancesSection` dùng chung trong Retail/Billing và Customer (chỉ đọc). Admin cấu hình mức advance/đường trên gói, mặc định chưa cấu hình. Luồng thu → phân bổ bill → hoàn phần chưa dùng, số tiền test và ảnh UI: [advance-flow.md](../docs/advance-flow.md). Phân bổ hiển thị Channel **Advance Credit** trong lịch sử thanh toán; Last Payment lấy cả thời điểm thanh toán từng phần.
+
+`PaymentHistory` dùng chung trong drawer Billing/Retail/Customer: đọc toàn bộ `BillingView.payments` từ API, lọc invoice/kênh/từ khóa và phân trang, chỉ tính giao dịch đã lưu. Hiển thị bill gốc, người ghi nhận, điểm bán, UTC và cảnh báo legacy thiếu chứng từ. Hướng dẫn: [payment-history-flow.md](../docs/payment-history-flow.md).

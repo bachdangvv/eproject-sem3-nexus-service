@@ -32,7 +32,6 @@ import {
   formatUsd,
 } from '../../components/StatusViews';
 import { TablePaginationFooter } from '../../components/TablePagination';
-import { SECURITY_DEPOSIT_USD } from '../../data/tariffs';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import {
   getConnections,
@@ -372,7 +371,7 @@ export function TechnicalLifecycleSection({
               <Text weight="semibold">{formatUsd(amount)}</Text>
               <Token
                 size="sm"
-                color={row.refundStatus === 'Pending' ? 'orange' : row.refundStatus === 'None' ? 'gray' : 'green'}
+                color={(row.refundStatus === 'Pending' || row.refundStatus === 'NeedsReconciliation') ? 'orange' : row.refundStatus === 'None' ? 'gray' : 'green'}
                 label={row.refundStatus || 'None'}
               />
             </VStack>
@@ -750,7 +749,7 @@ export function TechnicalLifecycleSection({
           header={
             <DialogHeader
               title={terminateTarget ? `Terminate Connection · ${terminateTarget.accountId}` : 'Terminate Connection'}
-              subtitle="Permanently decommission subscriber line and calculate security deposit refund."
+              subtitle="Permanently close the line. Billing handles deposit disbursement separately."
               onOpenChange={(open) => {
                 if (!open && !terminateSubmitting) {
                   setTerminateTarget(null);
@@ -768,7 +767,7 @@ export function TechnicalLifecycleSection({
                     container="card"
                     collapsible={false}
                     title="Irreversible Action"
-                    description="Terminating a connection permanently closes the subscriber line and transitions its status to Permanently Inactive. The Deposit Refund Determination Engine will automatically compute net refundable amounts."
+                    description="Terminating permanently closes the subscriber line. Only verified held deposit becomes refundable. Billing records the actual disbursement; service debt and equipment charges remain separate."
                   />
 
                   <Card padding={4} variant="muted">
@@ -778,24 +777,24 @@ export function TechnicalLifecycleSection({
                         <MetadataListItem label="Connection Type">
                           <ServiceTypeToken type={terminateTarget.type as ServiceTypeCode} />
                         </MetadataListItem>
-                        <MetadataListItem label="Base Security Deposit">
+                        <MetadataListItem label="Verified Held Deposit">
                           <Text weight="semibold">
                             {formatUsd(
-                              SECURITY_DEPOSIT_USD[terminateTarget.type as ServiceTypeCode] ?? 0,
+                              terminateTarget.deposit?.balance ?? 0,
                             )}
                           </Text>
                         </MetadataListItem>
                         <MetadataListItem label="Unpaid Invoice Dues">
-                          <Text color="secondary">Deducted automatically</Text>
+                          <Text color="secondary">Billed separately</Text>
                         </MetadataListItem>
                         <MetadataListItem label="Unsettled Damage Fees">
-                          <Text color="secondary">Deducted automatically</Text>
+                          <Text color="secondary">Billed separately</Text>
                         </MetadataListItem>
                       </MetadataList>
                       <Divider />
                       <HStack hAlign="between" vAlign="center" wrap="wrap">
-                        <Text type="supporting">Formula: max(0, Base Deposit - Dues - Damage Fees)</Text>
-                        <Token size="sm" color="orange" label="Refund Status: Pending Calculation" />
+                        <Text type="supporting">Held deposit = verified collected − already refunded. Legacy evidence must be reconciled before refund.</Text>
+                        <Token size="sm" color="orange" label={terminateTarget.deposit?.needsReconciliation ? 'Needs Reconciliation' : 'Billing Disburses Separately'} />
                       </HStack>
                     </VStack>
                   </Card>
@@ -830,7 +829,7 @@ export function TechnicalLifecycleSection({
                 />
                 <Button
                   variant="destructive"
-                  label="Terminate & Settle Deposit"
+                  label="Terminate Connection"
                   isLoading={terminateSubmitting}
                   isDisabled={terminateSubmitting}
                   onClick={() => void handleConfirmTerminate()}

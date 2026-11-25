@@ -125,6 +125,7 @@ export function formatChannelLabel(channel: string): string {
   if (channel === 'CustomerPortal') return 'Customer Portal';
   if (channel === 'RetailOutlet') return 'Retail Outlet';
   if (channel === 'CityOffice') return 'City Office';
+  if (channel === 'Advance') return 'Advance Credit';
   return channel || 'City Office';
 }
 

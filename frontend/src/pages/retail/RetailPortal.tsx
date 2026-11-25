@@ -13,6 +13,8 @@ import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import { RoutePath, useRouter, type RoutePathValue } from '../../router/router';
+import { DepositsSection } from '../shared/DepositsSection';
+import { AdvancesSection } from '../shared/AdvancesSection';
 import { RetailBillingSection } from './RetailBillingSection';
 import { RetailCustomersSection } from './RetailCustomersSection';
 import { RetailLifecycleSection } from './RetailLifecycleSection';
@@ -182,6 +184,8 @@ export function RetailPortal({ section }: { section: RetailSection }): JSX.Eleme
         </HStack>
       )}
 
+      {section === 'billing' && <DepositsSection role="Retail" refreshTrigger={refreshTrigger} />}
+      {section === 'billing' && <AdvancesSection role="Retail" refreshTrigger={refreshTrigger} onChanged={handleRefresh} />}
       {renderSection()}
     </VStack>
   );

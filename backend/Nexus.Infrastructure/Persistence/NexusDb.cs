@@ -27,10 +27,16 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
     public DbSet<CustomerDocument> CustomerDocuments => Set<CustomerDocument>();
     public DbSet<PlanChangeRequest> PlanChangeRequests => Set<PlanChangeRequest>();
     public DbSet<CustomerQuery> CustomerQueries => Set<CustomerQuery>();
+    public DbSet<SecurityDeposit> SecurityDeposits => Set<SecurityDeposit>();
+    public DbSet<DepositTransaction> DepositTransactions => Set<DepositTransaction>();
+    public DbSet<AdvanceAccount> AdvanceAccounts => Set<AdvanceAccount>();
+    public DbSet<AdvanceTransaction> AdvanceTransactions => Set<AdvanceTransaction>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
         ConfigureProperties(model);
+        ConfigureDeposits(model);
+        ConfigureAdvances(model);
         model.Entity<Employee>().HasIndex(user => user.Username).IsUnique();
         model.Entity<Employee>().HasOne(user => user.RetailShop).WithMany()
             .HasForeignKey(user => user.RetailShopId).OnDelete(DeleteBehavior.Restrict);
@@ -91,6 +97,8 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
             invoice.Property(i => i.PaidAmount).HasPrecision(12, 2);
             invoice.Property(i => i.DueAmount).HasPrecision(12, 2);
             invoice.Property(i => i.PaidAt).IsConcurrencyToken();
+            invoice.Property(i => i.PaidAmount).IsConcurrencyToken();
+            invoice.Property(i => i.DueAmount).IsConcurrencyToken();
             invoice.HasOne(i => i.Connection).WithMany(c => c.Invoices)
                 .HasForeignKey(i => i.ConnectionId).OnDelete(DeleteBehavior.Restrict);
             invoice.HasOne(i => i.CreatedBy).WithMany()
@@ -337,6 +345,7 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
         db.SaveChanges();
 
         var retailEmp = empMap[Roles.Retail];
+        retailEmp.RetailShopId = shop1.Id;
         var techEmp = empMap[Roles.Technical];
         var adminEmp = empMap[Roles.Admin];
         var billingEmp = empMap[Roles.Billing];
@@ -358,6 +367,7 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
         };
         var orderActive = reqActive.Confirm(retailEmp.Id);
         orderActive.Assess(true, true, null, "Standard fiber line verified.", techEmp.Id);
+        SeedDepositReceipt(orderActive, retailEmp);
         orderActive.Activate(techEmp.Id, opticalRouter.Id);
         foreach (var ev in orderActive.History) ev.Actor = ev.Status == OrderStatus.Pending ? retailEmp : techEmp;
         orderActive.Connection!.Status = "Active";
@@ -380,6 +390,7 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
         };
         var orderSuspended = reqSuspended.Confirm(retailEmp.Id);
         orderSuspended.Assess(true, true, true, "Landline pair available.", techEmp.Id);
+        SeedDepositReceipt(orderSuspended, retailEmp);
         orderSuspended.Activate(techEmp.Id, adslModem.Id);
         foreach (var ev in orderSuspended.History) ev.Actor = ev.Status == OrderStatus.Pending ? retailEmp : techEmp;
         orderSuspended.Connection!.Status = "TemporarilyInactive";
@@ -404,6 +415,7 @@ public abstract partial class NexusDb(DbContextOptions options) : DbContext(opti
         };
         var orderTerminated = reqTerminated.Confirm(retailEmp.Id);
         orderTerminated.Assess(true, true, true, "Distribution box connection tested.", techEmp.Id);
+        SeedDepositReceipt(orderTerminated, retailEmp);
         orderTerminated.Activate(techEmp.Id, landlinePhone.Id);
         foreach (var ev in orderTerminated.History) ev.Actor = ev.Status == OrderStatus.Pending ? retailEmp : techEmp;
         orderTerminated.Connection!.Status = "PermanentlyInactive";

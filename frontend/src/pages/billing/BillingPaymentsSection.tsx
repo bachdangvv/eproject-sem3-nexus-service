@@ -34,12 +34,11 @@ import {
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { RoutePath, useRouter } from '../../router/router';
-import { getBillingAccount, recordPayment, refundDeposit } from '../../services/billingApi';
+import { getBillingAccount, recordPayment } from '../../services/billingApi';
 import {
   ApiError,
   type BillingView,
   type RecordPaymentInput,
-  type RefundDepositInput,
 } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
@@ -69,7 +68,6 @@ export function BillingPaymentsSection({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [payingAccountId, setPayingAccountId] = useState<string | null>(null);
-  const [refundingDeposit, setRefundingDeposit] = useState(false);
   const [lastPaymentNotice, setLastPaymentNotice] = useState<{
     record: BillingView;
     collectedAmount: number;
@@ -85,7 +83,6 @@ export function BillingPaymentsSection({
   const batchSeqRef = useRef(0);
   const drawerSeqRef = useRef(0);
   const processingPaymentRef = useRef(false);
-  const refundingDepositRef = useRef(false);
   const hasMountedRefreshRef = useRef(false);
   const recordsRef = useRef(records);
 
@@ -238,8 +235,7 @@ export function BillingPaymentsSection({
     if (
       !normalized ||
       processingPaymentRef.current ||
-      payingAccountId !== null ||
-      refundingDepositRef.current
+      payingAccountId !== null
     ) {
       return;
     }
@@ -293,61 +289,6 @@ export function BillingPaymentsSection({
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
         setPayingAccountId(null);
-      }
-    }
-  };
-
-  const handleRefundDeposit = async (accountId: string, input?: RefundDepositInput) => {
-    const normalized = normalizeAccountId(accountId);
-    if (
-      !normalized ||
-      refundingDepositRef.current ||
-      processingPaymentRef.current ||
-      payingAccountId !== null
-    ) {
-      return;
-    }
-    refundingDepositRef.current = true;
-    setRefundingDeposit(true);
-    setActionError(null);
-    setDrawerError(null);
-
-    try {
-      const updated = await refundDeposit(normalized, input);
-      if (!isMountedRef.current) return;
-      onRecordUpsert(updated);
-      setDrawerRecord((prev) =>
-        prev && prev.accountId === updated.accountId ? updated : prev,
-      );
-      toast({
-        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
-      });
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      const msg = formatBillingError(
-        err,
-        normalized,
-        `Could not disburse security deposit refund for ${normalized}.`,
-      );
-      setActionError(msg);
-      if (drawerOpen) {
-        setDrawerError(msg);
-      }
-      if (err instanceof ApiError && err.status === 409) {
-        void getBillingAccount(normalized)
-          .then((fresh) => {
-            if (!isMountedRef.current) return;
-            onRecordUpsert(fresh);
-            setDrawerRecord((prev) =>
-              prev && prev.accountId === fresh.accountId ? fresh : prev,
-            );
-          })
-          .catch(() => { });
-      }
-    } finally {
-      refundingDepositRef.current = false;
-      if (isMountedRef.current) {
-        setRefundingDeposit(false);
       }
     }
   };
@@ -573,12 +514,11 @@ export function BillingPaymentsSection({
         isOpen={drawerOpen}
         onOpenChange={handleDrawerOpenChange}
         isLoading={drawerLoading}
-        actionLoading={payingAccountId !== null || refundingDeposit}
+        actionLoading={payingAccountId !== null}
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
-        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </Card>
   );

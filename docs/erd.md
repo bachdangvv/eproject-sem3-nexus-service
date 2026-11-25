@@ -15,6 +15,17 @@ erDiagram
     SERVICE_ORDER ||--o{ ORDER_EVENT : tracks
     EMPLOYEE ||--o{ ORDER_EVENT : acts
     SERVICE_ORDER ||--o| CONNECTION : activates
+    SERVICE_ORDER ||--|| SECURITY_DEPOSIT : secures
+    SECURITY_DEPOSIT ||--o{ DEPOSIT_TRANSACTION : records
+    EMPLOYEE ||--o{ DEPOSIT_TRANSACTION : confirms
+    RETAIL_SHOP ||--o{ DEPOSIT_TRANSACTION : receives_at
+    INVOICE ||--o{ DEPOSIT_TRANSACTION : legacy_source
+    SERVICE_ORDER ||--|| ADVANCE_ACCOUNT : prepays
+    ADVANCE_ACCOUNT ||--o{ ADVANCE_TRANSACTION : records
+    EMPLOYEE ||--o{ ADVANCE_TRANSACTION : confirms
+    RETAIL_SHOP ||--o{ ADVANCE_TRANSACTION : receives_at
+    INVOICE ||--o{ ADVANCE_TRANSACTION : allocated_to
+    PAYMENT_TRANSACTION o|--o| ADVANCE_TRANSACTION : allocation_payment
     PRODUCT ||--o{ CONNECTION : equips
     EMPLOYEE ||--o{ CONNECTION : refunds
     CONNECTION ||--o{ INVOICE : bills
@@ -45,6 +56,61 @@ erDiagram
     EMPLOYEE ||--o{ CUSTOMER_QUERY : answers
     EMPLOYEE ||--o{ CUSTOMER_QUERY : closes
 
+    ADVANCE_ACCOUNT {
+        long OrderId PK,FK
+        decimal PerConnectionAmount "nullable snapshot"
+        decimal GrossAmount
+        int DiscountPercent
+        decimal QuotedAmount
+        decimal ReceivedAmount
+        decimal AllocatedAmount
+        decimal RefundedAmount
+        string Origin
+        long Version
+    }
+    ADVANCE_TRANSACTION {
+        long Id PK
+        long OrderId FK
+        string OperationId UK
+        string Kind
+        decimal Amount
+        string Method
+        string Reference
+        string Note
+        datetime At
+        int ActorId FK
+        int RetailShopId FK
+        long InvoiceId FK
+        long PaymentId FK,UK
+        decimal AvailableAfter
+    }
+    SECURITY_DEPOSIT {
+        long OrderId PK,FK
+        decimal GrossAmount
+        int DiscountPercent
+        decimal RequiredAmount
+        decimal CollectedAmount
+        decimal RefundedAmount
+        bool NeedsReconciliation
+        string Origin
+        long Version
+    }
+    DEPOSIT_TRANSACTION {
+        long Id PK
+        long OrderId FK
+        string OperationId UK
+        string Kind
+        decimal Amount
+        string Method
+        string Reference
+        string Note
+        datetime At
+        int ActorId FK
+        int RetailShopId FK
+        long SourceInvoiceId FK
+        decimal CollectedAfter
+        decimal RefundedAfter
+    }
     CITY {
         string Code PK
         string Name
@@ -87,6 +153,7 @@ erDiagram
         string Type
         string Description
         decimal Price
+        decimal AdvancePerConnection "nullable policy"
         decimal LocalCallRate
         decimal StdCallRate
         decimal MobileMsgRate
@@ -297,7 +364,7 @@ erDiagram
 - **Chỉ mục (Indexes):**
   - **Unique Indexes:** `Employee.Username`, `Employee.CustomerId` (`IX_Employees_CustomerId` — unique không lọc trên SQLite `DemoDb` do SQLite cho phép nhiều giá trị `NULL`; filtered unique `WHERE [CustomerId] IS NOT NULL` trên SQL Server `SqlServerDb`), `RetailShop.Code`, `Vendor.Code`, `PurchaseOrder.OrderNumber`, `VendorPayment.PaymentNumber`, `Invoice.InvoiceNumber` (`IX_Invoices_InvoiceNumber`), `ServiceOrder.RequestId`, `Connection.OrderId`.
   - **Non-Unique Indexes:** `Customer.Phone` (`IX_Customers_Phone`).
-- **Optimistic Concurrency Tokens:** `Product.QuantityInStock`, `PurchaseOrder.Status`, `ServiceRequest.Confirmed`, `ServiceOrder.Status`, `Connection.Status`, `Invoice.Status`, `Invoice.PaidAt`.
+- **Optimistic Concurrency Tokens:** `Product.QuantityInStock`, `PurchaseOrder.Status`, `ServiceRequest.Confirmed`, `ServiceOrder.Status`, `Connection.Status`, `Invoice.Status`, `Invoice.PaidAt`, `Invoice.PaidAmount`, `Invoice.DueAmount`, `SecurityDeposit.Version`, `AdvanceAccount.Version`.
 - **Vai trò, liên kết tài khoản & thuộc tính tính toán (Ignored Properties):**
   - `Employee.Role`: nhận 5 giá trị `Admin | Retail | Technical | Billing | Customer` (`Roles.Staff` gồm 4 vai trò nhân viên; `Roles.Customer = "Customer"` dành cho cổng tự phục vụ). Tài khoản `Customer` liên kết 1–0..1 tới `Customer` qua `Employee.CustomerId` (bắt buộc không rỗng với `Customer`, `NULL` với nhân viên). `POST /api/employees` chỉ tạo nhân viên thuộc `Roles.Staff`; `PUT /api/employees/{id}` khóa bất biến `Role = "Customer"` và cấm gán `RetailShopId` cho tài khoản `Customer`.
   - `Customer.Status`: nhận `ACTIVE | SUSPENDED` (mặc định `"ACTIVE"` khi tự đăng ký `/api/register` hoặc tạo hồ sơ mới).
@@ -307,9 +374,17 @@ erDiagram
   - `ServiceOrder.Status`: `Pending` → `Feasible` / `NotFeasible` → `Connected`.
   - `Connection.Status`: `Active` ↔ `TemporarilyInactive` → `PermanentlyInactive` (khi chấm dứt, tính `RefundAmount` và đặt `RefundStatus = Pending` hoặc `None`; bộ phận Billing giải ngân sang `Refunded`).
   - `Invoice.Status`: `Unpaid` / `PartiallyPaid` → `Paid` hoặc chuyển sang `RolledOver` (`DueAmount = 0`) khi phát hành hóa đơn chu kỳ tiếp theo.
-  - `PaymentTransaction.Channel`: `CityOffice | RetailOutlet | CustomerPortal` (`CustomerPortal` dùng cho thanh toán trực tuyến từ cổng khách hàng).
+  - `PaymentTransaction.Channel`: `CityOffice | RetailOutlet | CustomerPortal | Advance` (`CustomerPortal` dùng cho thanh toán trực tuyến; `Advance` là phân bổ tiền thực nhận trước đó, không phải receipt tiền mới).
+
+**Cọc tách khỏi hóa đơn mới:** `SecurityDeposit` chốt nghĩa vụ cọc sau ưu đãi theo `ServiceRequest.ConnectionCount` tại lúc xác nhận Order. `CollectedAmount - RefundedAmount` là tiền thực giữ; chỉ số dư đã xác minh được hoàn sau đóng dịch vụ, không cấn trừ nợ/phí hỏng. `Version` là concurrency token; ghi tiền đồng thời kiểm tra trạng thái Order/Connection. `DepositTransaction.OperationId` unique toàn hệ thống, bộ `(OrderId, Kind, Reference)` cũng unique. Reconciliation lưu tổng có chứng từ, không tạo giao dịch tiền lần nữa. Có FK nguồn hóa đơn cho phân bổ legacy.
+
+`Invoice.DepositAmount`, `DiscountAmount`, `DiscountPercent` bằng 0 trên hóa đơn cước mới. Các bill lịch sử giữ nguyên số tiền và payment. Startup backfill chỉ nhập cọc đã thu từ đúng một bill chứa cọc Paid có đủ lịch sử thanh toán khớp; trường hợp còn lại là `NeedsReconciliation`. [Luồng nghiệp vụ và test chi tiết](deposit-flow.md).
 
 ## Lịch sử Migration (EF Core)
+
+**Payment history là phép đọc dữ liệu đã lưu:** gom `Invoice.Payments` của tất cả bill cùng Connection/Account, giữ FK InvoiceId và payment ID. Tải PaidBy và RetailShop theo FK payment, không lấy outlet hiện tại của nhân viên để thay dữ liệu cũ. ReceiptCode nội bộ suy ra từ ID, `paymentHistoryGaps` suy ra khi PaidAmount lệch tổng Payments; cả hai không tạo bảng hoặc tự thêm payment. [Luồng kiểm tra](payment-history-flow.md).
+
+**Advance tách riêng:** `AdvanceAccount` chốt policy gói nullable và mức bulk tại xác nhận Order; số dư = Received − Allocated − Refunded. `AdvanceTransaction.Kind` là Collection/Allocation/Refund. OperationId unique toàn hệ thống, `(OrderId, Kind, Reference)` unique, PaymentId nullable unique; chỉ allocation liên kết payment kênh Advance và Invoice của chính Account. Ledger/payment/bill lưu nguyên tử; concurrency số tiền bill chặn cả tranh chấp khi trạng thái vẫn PartiallyPaid. Startup backfill Legacy rỗng, không suy luận credit từ cọc/payment cũ. [Luồng và kiểm thử](advance-flow.md).
 
 Hệ thống duy trì song song hai bộ migration đồng bộ cho SQLite (`DemoDb` tại `Migrations/Demo/`) và SQL Server (`SqlServerDb` tại `Migrations/SqlServer/`):
 
@@ -324,3 +399,5 @@ Hệ thống duy trì song song hai bộ migration đồng bộ cho SQLite (`Dem
 | 7 | `20261120184852_AddDocumentFileMetadata` | `20261120184910_AddDocumentFileMetadata` | Metadata tệp chứng từ (`OriginalFileName`, `ContentType`, `FileSizeBytes`) trên `CustomerDocuments` |
 | 8 | `20261120210841_RemediationSchemaUpdates` | `20261120210849_RemediationSchemaUpdates` | `Employees.Active`/`RetailShopId`, `Plans.ValidityMonths`/`HoursAllowance`/`SpeedKbps` + `CK_Plans_ValidityMonths`, `Requests.RetailShopId`, `Payments.RetailShopId`, `Invoices.CreatedById`, `IX_Invoices_InvoiceNumber`, `Connections.RefundNote`/`RefundedAt`/`RefundedById`, `PlanChangeRequests.RequestedById`, `CustomerQueries.CreatedById`/`ClosedAt`/`ClosedById` |
 | 9 | `20261121083859_AddEmployeeCustomerLink` | `20261121083905_AddEmployeeCustomerLink` | `Employees.CustomerId` (`int?`), `IX_Employees_CustomerId` (unique không lọc ở SQLite; filtered unique `[CustomerId] IS NOT NULL` ở SQL Server), `FK_Employees_Customers_CustomerId` (`ReferentialAction.Restrict`) |
+| 10 | `20261125071106_OrderDepositLedger` | `20261125071141_OrderDepositLedger` | Thêm `SecurityDeposits`, `DepositTransactions`, FK, unique OperationId và biên nhận theo Order; backfill bằng chứng legacy chạy khi API khởi động |
+| 11 | `20261125085837_OrderAdvanceCredit` | `20261125090026_OrderAdvanceCredit` | `Plans.AdvancePerConnection` nullable; `AdvanceAccounts` và `AdvanceTransactions`, snapshot, số dư, FK bill/payment, unique operation/chứng từ/payment; startup tạo sổ Legacy rỗng |

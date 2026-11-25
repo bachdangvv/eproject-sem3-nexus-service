@@ -15,7 +15,8 @@ public sealed record PlanView(
     decimal MobileMsgRate = 0m,
     int ValidityMonths = 1,
     int? HoursAllowance = null,
-    int? SpeedKbps = null);
+    int? SpeedKbps = null,
+    decimal? AdvancePerConnection = null);
 public sealed record ProductView(int Id, string Name, string Description, bool Active, int QuantityInStock, decimal ReplacementPrice);
 
 /// <summary>Application service managing cities, service plans, and equipment product catalog entries.</summary>
@@ -62,6 +63,7 @@ public sealed class CatalogService(ICatalogStore store)
         ValidatePrice(input.StdCallRate);
         ValidatePrice(input.MobileMsgRate);
         ValidateValidityMonths(input.ValidityMonths);
+        if (input.AdvancePerConnection is { } advance) ValidatePrice(advance);
         var plan = new ServicePlan
         {
             Name = input.Name.Trim(),
@@ -74,7 +76,8 @@ public sealed class CatalogService(ICatalogStore store)
             MobileMsgRate = input.MobileMsgRate,
             ValidityMonths = input.ValidityMonths,
             HoursAllowance = input.HoursAllowance,
-            SpeedKbps = input.SpeedKbps
+            SpeedKbps = input.SpeedKbps,
+            AdvancePerConnection = input.AdvancePerConnection
         };
         store.Add(plan);
         await store.SaveChangesAsync();
@@ -88,6 +91,7 @@ public sealed class CatalogService(ICatalogStore store)
         ValidatePrice(input.StdCallRate);
         ValidatePrice(input.MobileMsgRate);
         ValidateValidityMonths(input.ValidityMonths);
+        if (input.AdvancePerConnection is { } advance) ValidatePrice(advance);
         var plan = await FindPlanAsync(id);
         plan.Name = input.Name.Trim();
         plan.Type = input.Type;
@@ -100,6 +104,7 @@ public sealed class CatalogService(ICatalogStore store)
         plan.ValidityMonths = input.ValidityMonths;
         plan.HoursAllowance = input.HoursAllowance;
         plan.SpeedKbps = input.SpeedKbps;
+        plan.AdvancePerConnection = input.AdvancePerConnection;
         await store.SaveChangesAsync();
         return ToView(plan);
     }
@@ -178,7 +183,7 @@ public sealed class CatalogService(ICatalogStore store)
     private static PlanView ToView(ServicePlan plan) =>
         new(plan.Id, plan.Name, plan.Type, plan.Description, plan.Price, plan.Active,
             plan.LocalCallRate, plan.StdCallRate, plan.MobileMsgRate,
-            plan.ValidityMonths, plan.HoursAllowance, plan.SpeedKbps);
+            plan.ValidityMonths, plan.HoursAllowance, plan.SpeedKbps, plan.AdvancePerConnection);
 
     private static ProductView ToView(Product product) =>
         new(product.Id, product.Name, product.Description, product.Active, product.QuantityInStock, product.ReplacementPrice);

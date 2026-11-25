@@ -323,6 +323,15 @@ export function TechnicalConnectionsSection({
       ),
     },
     {
+      key: 'deposit',
+      header: 'Security Deposit',
+      width: pixel(180),
+      renderCell: row => <VStack gap={1}>
+        <Text>{row.deposit?.needsReconciliation ? 'Needs reconciliation' : row.deposit?.requiredAmount === 0 ? 'Waived' : row.deposit && row.deposit.remainingToCollect === 0 ? 'Collected' : 'Awaiting collection'}</Text>
+        <Text type="supporting">{formatUsd(row.deposit?.collectedAmount ?? 0)} / {formatUsd(row.deposit?.requiredAmount ?? 0)}</Text>
+      </VStack>,
+    },
+    {
       key: 'accountPreview',
       header: 'Account Format Preview',
       width: pixel(235),
@@ -357,7 +366,7 @@ export function TechnicalConnectionsSection({
             variant="primary"
             label="Activate"
             isLoading={activatingCode === row.code}
-            isDisabled={activatingCode !== null}
+            isDisabled={activatingCode !== null || !row.deposit || row.deposit.needsReconciliation || row.deposit.remainingToCollect > 0}
             onClick={() => handleOpenActivation(row)}
           />
         </HStack>

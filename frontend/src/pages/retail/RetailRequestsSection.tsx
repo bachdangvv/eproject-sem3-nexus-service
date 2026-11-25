@@ -261,6 +261,7 @@ export function RetailRequestsSection({
     return computeBillAmounts({
       connectionType: selectedPlan.type,
       planRentalUsd: selectedPlan.price,
+      advancePerConnection: selectedPlan.advancePerConnection,
       connectionCount: parsedCount,
       includeSecurityDeposit: true,
       usageChargesUsd: 0,
@@ -736,7 +737,7 @@ export function RetailRequestsSection({
                         setConnectionCount(value);
                         setFieldErrors((prev) => ({ ...prev, connectionCount: undefined }));
                       }}
-                      description="10–14 lines: 25% bulk discount; 15–24: 50%; 25–50: 75%; >50: 100% off plan rental & deposit."
+                      description="Security deposit discount per order: 10–14 lines: 25%; 15–24: 50%; 25–50: 75%; 51+: 100%. Plan rental remains payable in full."
                       status={
                         fieldErrors.connectionCount
                           ? { type: 'error', message: fieldErrors.connectionCount }
@@ -800,15 +801,15 @@ export function RetailRequestsSection({
                   <Card variant="muted" padding={4}>
                     <VStack gap={3}>
                       <HStack hAlign="between" vAlign="center">
-                        <Heading level={4}>Bulk Discount & Upfront Estimate</Heading>
+                        <Heading level={4}>Deposit & Service Charge Estimate</Heading>
                         {liveEstimate.discountPercent > 0 ? (
                           <Token
                             size="sm"
                             color="purple"
-                            label={`${liveEstimate.discountPercent}% Bulk Tier (${parsedCount} lines)`}
+                            label={`${liveEstimate.discountPercent}% Deposit Discount (${parsedCount} lines)`}
                           />
                         ) : (
-                          <Token size="sm" color="gray" label="Standard (1 line)" />
+                          <Token size="sm" color="gray" label="Standard Deposit" />
                         )}
                       </HStack>
                       <MetadataList columns={2}>
@@ -818,7 +819,7 @@ export function RetailRequestsSection({
                         <MetadataListItem label="Security Deposit">
                           {formatUsd(liveEstimate.securityDepositGrossUsd)}
                         </MetadataListItem>
-                        <MetadataListItem label="Bulk Discount">
+                        <MetadataListItem label="Security Deposit Discount">
                           <Text weight="semibold">
                             {liveEstimate.discountPercent > 0
                               ? `${liveEstimate.discountPercent}% (-${formatUsd(liveEstimate.bulkDiscountAmountUsd)})`
@@ -828,10 +829,20 @@ export function RetailRequestsSection({
                         <MetadataListItem label="Service Tax (12.24%)">
                           {formatUsd(liveEstimate.serviceTaxUsd)}
                         </MetadataListItem>
-                        <MetadataListItem label="Estimated Upfront Total">
-                          <Text weight="bold">{formatUsd(liveEstimate.totalBilledUsd)}</Text>
+                        <MetadataListItem label="Deposit to collect separately">
+                          <Text>{formatUsd(liveEstimate.netDepositUsd)}</Text>
+                        </MetadataListItem>
+                        <MetadataListItem label="Estimated service invoice">
+                          <Text>{formatUsd(liveEstimate.serviceInvoiceTotalUsd)}</Text>
+                        </MetadataListItem>
+                        <MetadataListItem label="Optional advance quote (prepayment)">
+                          {liveEstimate.advanceQuote.configured ? formatUsd(liveEstimate.advanceQuote.quotedAmount) : 'Policy not configured'}
+                        </MetadataListItem>
+                        <MetadataListItem label="Combined estimate across separate charges">
+                          <Text weight="bold">{formatUsd(liveEstimate.totalEstimatedUsd)}</Text>
                         </MetadataListItem>
                       </MetadataList>
+                      <Text type="supporting">Advance changes payment timing. Only money actually received can settle a service invoice; the quoted advance is not an extra charge in this total.</Text>
                     </VStack>
                   </Card>
                 ) : null}
@@ -998,7 +1009,7 @@ export function RetailRequestsSection({
                       {`Broadband ${formatUsd(SECURITY_DEPOSIT_USD.B)} · Dial-Up ${formatUsd(SECURITY_DEPOSIT_USD.D)} · Landline ${formatUsd(SECURITY_DEPOSIT_USD.T)}.`}
                     </Text>
                     <Text type="supporting">
-                      Bulk discounts on plan rental & deposit: 10–14 lines (25%), 15–24 lines (50%), 25–50 lines (75%), 51+ lines (100%).
+                      Security deposit discounts per order: 10–14 lines (25%), 15–24 lines (50%), 25–50 lines (75%), 51+ lines (100%). Plan rental and usage charges remain payable in full.
                     </Text>
                   </VStack>
                 </Card>

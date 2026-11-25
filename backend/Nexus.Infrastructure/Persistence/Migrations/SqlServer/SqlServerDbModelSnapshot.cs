@@ -22,6 +22,132 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Nexus.Domain.AdvanceAccount", b =>
+                {
+                    b.Property<long>("OrderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("AllocatedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("DiscountPercent")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("PerConnectionAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("QuotedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("ReceivedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("RefundedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("OrderId");
+
+                    b.ToTable("AdvanceAccounts");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.AdvanceTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActorId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("AvailableAfter")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<long?>("InvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<long>("OrderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("PaymentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("RetailShopId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique()
+                        .HasFilter("[PaymentId] IS NOT NULL");
+
+                    b.HasIndex("RetailShopId");
+
+                    b.HasIndex("OrderId", "Kind", "Reference")
+                        .IsUnique();
+
+                    b.ToTable("AdvanceTransactions");
+                });
+
             modelBuilder.Entity("Nexus.Domain.City", b =>
                 {
                     b.Property<string>("Code")
@@ -309,6 +435,83 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.ToTable("CustomerQueries");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.DepositTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("ActorId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("CollectedAfter")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<long>("OrderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("RefundedAfter")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int?>("RetailShopId")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("SourceInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("RetailShopId");
+
+                    b.HasIndex("SourceInvoiceId");
+
+                    b.HasIndex("OrderId", "Kind", "Reference")
+                        .IsUnique();
+
+                    b.ToTable("DepositTransactions");
+                });
+
             modelBuilder.Entity("Nexus.Domain.Employee", b =>
                 {
                     b.Property<int>("Id")
@@ -444,6 +647,7 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .HasColumnType("int");
 
                     b.Property<decimal>("DueAmount")
+                        .IsConcurrencyToken()
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
@@ -465,6 +669,7 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .HasColumnType("decimal(10,2)");
 
                     b.Property<decimal>("PaidAmount")
+                        .IsConcurrencyToken()
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
@@ -796,6 +1001,47 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.ToTable("RetailShops");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.SecurityDeposit", b =>
+                {
+                    b.Property<long>("OrderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("CollectedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("DiscountPercent")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<bool>("NeedsReconciliation")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("RefundedAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("RequiredAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("OrderId");
+
+                    b.ToTable("SecurityDeposits");
+                });
+
             modelBuilder.Entity("Nexus.Domain.ServiceFeedback", b =>
                 {
                     b.Property<long>("Id")
@@ -872,6 +1118,10 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
 
                     b.Property<bool>("Active")
                         .HasColumnType("bit");
+
+                    b.Property<decimal?>("AdvancePerConnection")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -1093,6 +1343,57 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.ToTable("VendorPayments");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.AdvanceAccount", b =>
+                {
+                    b.HasOne("Nexus.Domain.ServiceOrder", "Order")
+                        .WithOne("Advance")
+                        .HasForeignKey("Nexus.Domain.AdvanceAccount", "OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.AdvanceTransaction", b =>
+                {
+                    b.HasOne("Nexus.Domain.Employee", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.Invoice", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Nexus.Domain.AdvanceAccount", "Advance")
+                        .WithMany("Transactions")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.PaymentTransaction", "Payment")
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Nexus.Domain.RetailShop", "RetailShop")
+                        .WithMany()
+                        .HasForeignKey("RetailShopId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Advance");
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("Payment");
+
+                    b.Navigation("RetailShop");
+                });
+
             modelBuilder.Entity("Nexus.Domain.Connection", b =>
                 {
                     b.HasOne("Nexus.Domain.Product", "AssignedProduct")
@@ -1184,6 +1485,36 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("Nexus.Domain.DepositTransaction", b =>
+                {
+                    b.HasOne("Nexus.Domain.Employee", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Nexus.Domain.SecurityDeposit", "Deposit")
+                        .WithMany("Transactions")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexus.Domain.RetailShop", "RetailShop")
+                        .WithMany()
+                        .HasForeignKey("RetailShopId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Nexus.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("SourceInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Deposit");
+
+                    b.Navigation("RetailShop");
                 });
 
             modelBuilder.Entity("Nexus.Domain.Employee", b =>
@@ -1361,6 +1692,17 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("City");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.SecurityDeposit", b =>
+                {
+                    b.HasOne("Nexus.Domain.ServiceOrder", "Order")
+                        .WithOne("Deposit")
+                        .HasForeignKey("Nexus.Domain.SecurityDeposit", "OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("Nexus.Domain.ServiceFeedback", b =>
                 {
                     b.HasOne("Nexus.Domain.ServiceOrder", null)
@@ -1440,6 +1782,11 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("Vendor");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.AdvanceAccount", b =>
+                {
+                    b.Navigation("Transactions");
+                });
+
             modelBuilder.Entity("Nexus.Domain.Connection", b =>
                 {
                     b.Navigation("Incidents");
@@ -1457,9 +1804,18 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Navigation("Payments");
                 });
 
+            modelBuilder.Entity("Nexus.Domain.SecurityDeposit", b =>
+                {
+                    b.Navigation("Transactions");
+                });
+
             modelBuilder.Entity("Nexus.Domain.ServiceOrder", b =>
                 {
+                    b.Navigation("Advance");
+
                     b.Navigation("Connection");
+
+                    b.Navigation("Deposit");
 
                     b.Navigation("Feedback");
 

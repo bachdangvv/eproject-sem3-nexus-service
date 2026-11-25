@@ -51,7 +51,8 @@ public sealed record PlanInput(
     [property: Range(typeof(decimal), "0", "9999999999.99")] decimal MobileMsgRate = 0m,
     [property: Range(1, 12)] int ValidityMonths = 1,
     [property: Range(1, 100000)] int? HoursAllowance = null,
-    [property: Range(1, 10000000)] int? SpeedKbps = null);
+    [property: Range(1, 10000000)] int? SpeedKbps = null,
+    [property: Range(typeof(decimal), "0", "999999.99")] decimal? AdvancePerConnection = null);
 
 public sealed record ProductInput(
     [property: Required, StringLength(100)] string Name,
@@ -122,6 +123,29 @@ public sealed record RecordPaymentInput(
 
 public sealed record RefundDepositInput(
     [property: StringLength(500)] string? Note = null);
+
+public sealed record DepositMoneyInput(
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal Amount,
+    [property: Required, RegularExpression("^[a-zA-Z0-9-]{16,64}$")] string OperationId,
+    [property: Required, RegularExpression("^(Cash|BankTransfer|Cheque)$")] string Method,
+    [property: Required, StringLength(100)] string Reference,
+    [property: Required, StringLength(500)] string Note);
+
+public sealed record ReconcileDepositInput(
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal CollectedAmount,
+    [property: Range(typeof(decimal), "0", "9999999999.99")] decimal RefundedAmount,
+    [property: Required, RegularExpression("^[a-zA-Z0-9-]{16,64}$")] string OperationId,
+    [property: Required, StringLength(100)] string Reference,
+    [property: Required, StringLength(500)] string Note);
+
+public sealed record CancelOrderInput([property: Required, StringLength(450)] string Reason);
+
+public sealed record AllocateAdvanceInput(
+    [property: Range(1, long.MaxValue)] long InvoiceId,
+    [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal Amount,
+    [property: Required, RegularExpression("^[a-zA-Z0-9-]{16,64}$")] string OperationId,
+    [property: Required, StringLength(100)] string Reference,
+    [property: Required, StringLength(500)] string Note);
 
 public sealed record AssessmentInput(
     [property: Required] bool? DistanceOk,

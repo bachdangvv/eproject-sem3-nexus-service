@@ -1,5 +1,7 @@
 # Kịch bản Review 1 Nexus
 
+Luồng hiện tại đã bổ sung thu cọc riêng trước kích hoạt và sổ advance tùy chọn liên kết hóa đơn. Xem [hướng dẫn thu và hoàn cọc](deposit-flow.md) và [thu, phân bổ, hoàn advance](advance-flow.md) để diễn tập đầy đủ; các kết quả ngày 16/11 bên dưới là bằng chứng lịch sử của phiên bản cũ. Gói seed BB Basic không tự có chính sách advance.
+
 Dùng API mode mặc định. Chạy FE và BE theo [README](../README.md), rồi mở [trang đăng nhập](http://localhost:5173/login). Cả bốn tài khoản seed dùng mật khẩu demo cục bộ `Nexus-Demo-2026!`. Nút **Sign out** giúp đổi vai trò giữa các bước.
 
 ## Chuẩn bị
@@ -15,8 +17,10 @@ Dùng API mode mặc định. Chạy FE và BE theo [README](../README.md), rồ
 | Minh | **Admin** (`admin.demo`). Mở **Plans & Tariffs**, chỉ gói BB Basic rồi thêm sản phẩm `Review 1 Router`. Trong **Access Control & RBAC**, tạo một tài khoản Retail nếu cần trình bày T15. | Gói ở trạng thái active. Sản phẩm hiện trong catalog. Admin thấy username và role vừa tạo. |
 | Bách | **Retail** (`retail.demo`). Mở **Customers → New customer**, nhập dữ liệu mẫu. Sau khi lưu, dùng **Find customer** với mã vừa cấp. | Khách có mã `CUS-000002` trên DB sạch. Địa chỉ và số điện thoại đọc lại đúng. |
 | Bách | Mở **Create New Subscription**, chọn khách và **BB Basic**, bấm **Save request** rồi **Confirm request** trong hàng chờ. | Có Request trước khi có Order. Sau khi confirm, chép Order ID `B0000000001` và thấy trạng thái **Pending**. |
-| Nhật | **Technical** (`technical.demo`). Mở **ODN Feasibility Surveys**, chọn Order ID vừa tạo, giữ **Distance within limit** và **Server available**, bấm **Save assessment**. Mở **Circuit Activation & Commissioning**, chọn lại đơn và bấm **Create connection**. | Lịch sử **Pending → Feasible → Connected**. Chép Account ID `B101000000000001`. |
-| Nhật | **Billing** (`billing.demo`). Dán Account ID tại **Billing & payment → Find account**. Bấm **Create billing record → Record full manual payment**. Tải lại và tìm lại Account ID. | Đúng Order ID, khách và giá **225.00 USD**. Trạng thái **Not billed → Unpaid → Paid**, có thời điểm thanh toán. |
+| Nhật | **Technical** (`technical.demo`). Mở **ODN Feasibility Surveys**, chọn Order ID vừa tạo, giữ **Distance within limit** và **Server available**, bấm **Save assessment**. | Lịch sử **Pending → Feasible**. Kích hoạt còn bị chặn khi thiếu cọc. |
+| Bách | **Retail** (`retail.demo`). Mở **Billing & Payments → Security Deposits**, tìm Order ID, chọn **Record deposit receipt**, thu 500 USD với mã biên nhận và lý do demo. | Cọc phải thu 500, thực thu 500, còn phải thu 0. Có giao dịch Collection, không phải hóa đơn cước. |
+| Nhật | **Technical** (`technical.demo`). Refresh **Circuit Activation & Commissioning**, chọn Order và bấm **Activate**. | **Connected**, có Account ID. Sao chép mã thực tế được cấp. |
+| Nhật | **Billing** (`billing.demo`). Dán Account ID tại **Billing & payment → Find account**. Bấm **Create billing record → Record full manual payment**. Tải lại và tìm lại Account ID. | Rental **225.00 USD**, thuế **27.54 USD**, bill **252.54 USD**, không cộng cọc. **Not billed → Unpaid → Paid**, có thời điểm thanh toán. |
 | Bách | Vào lại **Retail → Orders**, tìm đúng Order ID. Gửi **Feedback** 5/5 với nội dung `Kết nối hoạt động ổn định`. Tải lại chi tiết đơn. | Phản hồi vẫn có trong Order đã Connected. |
 | Cả nhóm | Mở **Tracking** trên trang chủ và lần lượt nhập Order ID, Account ID. | Tra được cả hai mã và trạng thái kết nối. Tên và địa chỉ khách không xuất hiện trên tracking công khai. |
 

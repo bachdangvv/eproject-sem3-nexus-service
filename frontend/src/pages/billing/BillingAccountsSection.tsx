@@ -34,14 +34,12 @@ import {
   createBillingRecord,
   getBillingAccount,
   recordPayment,
-  refundDeposit,
 } from '../../services/billingApi';
 import {
   ApiError,
   type BillingView,
   type CreateInvoiceInput,
   type RecordPaymentInput,
-  type RefundDepositInput,
 } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
@@ -75,7 +73,6 @@ export function BillingAccountsSection({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [creatingBill, setCreatingBill] = useState(false);
   const [recordingPayment, setRecordingPayment] = useState(false);
-  const [refundingDeposit, setRefundingDeposit] = useState(false);
 
   const activeRecord = useMemo<BillingView | null>(
     () =>
@@ -95,7 +92,6 @@ export function BillingAccountsSection({
   const drawerSeqRef = useRef(0);
   const generatingBillRef = useRef(false);
   const processingPaymentRef = useRef(false);
-  const refundingDepositRef = useRef(false);
   const lastHandledRefreshTriggerRef = useRef(refreshTrigger);
   const targetAccountId = activeRecord?.accountId ?? selectedAccountId;
   const targetAccountIdRef = useRef<string | null>(targetAccountId);
@@ -235,8 +231,7 @@ export function BillingAccountsSection({
     if (
       !normalized ||
       processingPaymentRef.current ||
-      generatingBillRef.current ||
-      refundingDepositRef.current
+      generatingBillRef.current
     ) {
       return;
     }
@@ -282,54 +277,6 @@ export function BillingAccountsSection({
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
         setRecordingPayment(false);
-      }
-    }
-  };
-
-  const handleRefundDeposit = async (targetId: string, input?: RefundDepositInput) => {
-    const normalized = normalizeAccountId(targetId);
-    if (
-      !normalized ||
-      refundingDepositRef.current ||
-      generatingBillRef.current ||
-      processingPaymentRef.current
-    ) {
-      return;
-    }
-    refundingDepositRef.current = true;
-    setRefundingDeposit(true);
-    setActionError(null);
-    setDrawerError(null);
-
-    try {
-      const updated = await refundDeposit(normalized, input);
-      if (!isMountedRef.current) return;
-      onRecordUpsert(updated);
-      onSelectAccount(updated.accountId);
-      setDrawerRecord((prev) =>
-        prev && prev.accountId === updated.accountId ? updated : prev,
-      );
-      toast({
-        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
-      });
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      const msg = formatBillingError(
-        err,
-        normalized,
-        `Could not disburse security deposit refund for ${normalized}.`,
-      );
-      setActionError(msg);
-      if (drawerOpen) {
-        setDrawerError(msg);
-      }
-      if (err instanceof ApiError && err.status === 409) {
-        void performLookup(normalized, true, true);
-      }
-    } finally {
-      refundingDepositRef.current = false;
-      if (isMountedRef.current) {
-        setRefundingDeposit(false);
       }
     }
   };
@@ -660,7 +607,7 @@ export function BillingAccountsSection({
                     variant="primary"
                     label="Create Billing Record"
                     isLoading={creatingBill}
-                    isDisabled={creatingBill || recordingPayment || refundingDeposit}
+                    isDisabled={creatingBill || recordingPayment}
                     onClick={() => void handleCreateBill(activeRecord.accountId)}
                   />
                 ) : null}
@@ -673,7 +620,7 @@ export function BillingAccountsSection({
                         : 'Record Full Payment'
                     }
                     isLoading={recordingPayment}
-                    isDisabled={creatingBill || recordingPayment || refundingDeposit}
+                    isDisabled={creatingBill || recordingPayment}
                     onClick={() => void handleRecordPayment(activeRecord.accountId)}
                   />
                 ) : null}
@@ -745,13 +692,12 @@ export function BillingAccountsSection({
         isOpen={drawerOpen}
         onOpenChange={handleDrawerOpenChange}
         isLoading={drawerLoading}
-        actionLoading={creatingBill || recordingPayment || refundingDeposit}
+        actionLoading={creatingBill || recordingPayment}
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
-        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </VStack>
   );

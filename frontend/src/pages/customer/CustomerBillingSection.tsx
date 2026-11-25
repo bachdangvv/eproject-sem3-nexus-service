@@ -37,7 +37,9 @@ import {
   ServiceTypeToken,
   StatusLabel,
   formatUsd,
+  lastPaymentAt,
 } from '../../components/StatusViews';
+import { PaymentHistory } from '../shared/PaymentHistory';
 import { TablePaginationFooter } from '../../components/TablePagination';
 import { useClientPagination } from '../../hooks/useClientPagination';
 import { getBilling, getConnections, getProfile, payBillingOnline } from '../../services/customerApi';
@@ -51,14 +53,12 @@ import type {
 } from '../../types/nexus';
 import {
   extractErrorMessage,
-  formatChannelLabel,
   formatCityDisplay,
   validatePositiveCurrency,
   type BillingRow,
   type ConnectionRow,
   type CustomerSectionProps,
   type InvoiceRow,
-  type PaymentRow,
 } from './customerTypes';
 
 type BillingFilter = 'ALL' | BillingStatus;
@@ -217,14 +217,6 @@ export function CustomerBillingSection({
     [drawerRecord?.invoices],
   );
   const invoicePagination = useClientPagination(drawerInvoiceRows, {
-    resetKey: drawerRecord?.accountId ?? '',
-  });
-
-  const drawerPaymentRows = useMemo<PaymentRow[]>(
-    () => (drawerRecord?.payments ?? []).map((p) => ({ ...p })),
-    [drawerRecord?.payments],
-  );
-  const paymentPagination = useClientPagination(drawerPaymentRows, {
     resetKey: drawerRecord?.accountId ?? '',
   });
 
@@ -399,12 +391,14 @@ export function CustomerBillingSection({
       key: 'paidAt',
       header: 'Last Payment',
       width: pixel(135),
-      renderCell: (b) =>
-        b.paidAt ? (
-          <Timestamp value={b.paidAt} format="date" />
+      renderCell: (b) => {
+        const at = lastPaymentAt(b);
+        return at ? (
+          <Timestamp value={at} format="date" />
         ) : (
           <Text type="supporting">No payments</Text>
-        ),
+        );
+      },
     },
     {
       key: 'actions',
@@ -485,50 +479,6 @@ export function CustomerBillingSection({
     },
   ];
 
-  const paymentColumns: TableColumn<PaymentRow>[] = [
-    {
-      key: 'paidAt',
-      header: 'Date (UTC)',
-      width: proportional(1.4),
-      renderCell: (p) => (
-        <Timestamp value={p.paidAt} format="date_time" timezoneID="UTC" isTimezoneShown />
-      ),
-    },
-    {
-      key: 'amount',
-      header: 'Amount',
-      width: pixel(100),
-      renderCell: (p) => (
-        <Text weight="semibold" hasTabularNumbers>
-          {formatUsd(p.amount)}
-        </Text>
-      ),
-    },
-    {
-      key: 'channel',
-      header: 'Channel',
-      width: pixel(130),
-      renderCell: (p) => (
-        <Token
-          size="sm"
-          color={
-            p.channel === 'CustomerPortal'
-              ? 'teal'
-              : p.channel === 'RetailOutlet'
-                ? 'purple'
-                : 'blue'
-          }
-          label={formatChannelLabel(p.channel)}
-        />
-      ),
-    },
-    {
-      key: 'note',
-      header: 'Note',
-      width: proportional(1.4),
-      renderCell: (p) => <Text type="supporting">{p.note || '-'}</Text>,
-    },
-  ];
 
   return (
     <VStack gap={5}>
@@ -735,7 +685,7 @@ export function CustomerBillingSection({
                     <MetadataListItem label="Equipment Fee">
                       {formatUsd(drawerRecord.equipmentFee ?? 0)}
                     </MetadataListItem>
-                    <MetadataListItem label="Bulk Discount">
+                    <MetadataListItem label="Recorded Discount">
                       {drawerRecord.discountPercent && drawerRecord.discountPercent > 0
                         ? `${drawerRecord.discountPercent}% (-${formatUsd(drawerRecord.discountAmount ?? 0)})`
                         : '$0.00 (0%)'}
@@ -795,34 +745,7 @@ export function CustomerBillingSection({
 
                   <Divider />
 
-                  <VStack gap={3}>
-                    <Heading level={4}>Payment History</Heading>
-                    <Table<PaymentRow>
-                      aria-label="Customer Payment History"
-                      density="compact"
-                      columns={paymentColumns}
-                      data={paymentPagination.paginatedItems}
-                      rowIndexStart={paymentPagination.rowIndexStart}
-                      rowCount={paymentPagination.totalItems}
-                      idKey="id"
-                      emptyState={
-                        <EmptyState
-                          title="No payments recorded"
-                          description="Online or in-store payments will appear here."
-                          icon={<Icon icon="info" />}
-                          isCompact
-                        />
-                      }
-                    />
-                    <TablePaginationFooter
-                      page={paymentPagination.page}
-                      pageSize={paymentPagination.pageSize}
-                      totalItems={paymentPagination.totalItems}
-                      onPageChange={paymentPagination.setPage}
-                      onPageSizeChange={paymentPagination.setPageSize}
-                      label="Customer payment history pagination"
-                    />
-                  </VStack>
+                  <PaymentHistory key={drawerRecord.accountId} record={drawerRecord} />
                 </VStack>
               )}
             </LayoutContent>

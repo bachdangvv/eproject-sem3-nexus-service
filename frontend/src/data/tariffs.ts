@@ -41,28 +41,28 @@ export const BULK_DISCOUNT_TIERS: BulkDiscountTier[] = [
     minConnections: 10,
     maxConnections: 14,
     discountPercent: 25,
-    appliesTo: '25% off Plan Rental & Security Deposit',
+    appliesTo: '25% off Security Deposit',
   },
   {
     rangeLabel: '15–24 connections',
     minConnections: 15,
     maxConnections: 24,
     discountPercent: 50,
-    appliesTo: '50% off Plan Rental & Security Deposit',
+    appliesTo: '50% off Security Deposit',
   },
   {
     rangeLabel: '25–50 connections',
     minConnections: 25,
     maxConnections: 50,
     discountPercent: 75,
-    appliesTo: '75% off Plan Rental & Security Deposit',
+    appliesTo: '75% off Security Deposit',
   },
   {
     rangeLabel: 'Above 50 connections',
     minConnections: 51,
     maxConnections: null,
     discountPercent: 100,
-    appliesTo: '100% off Plan Rental & Security Deposit',
+    appliesTo: '100% off Security Deposit',
   },
 ];
 
@@ -142,6 +142,20 @@ export function formatPlanPriceWithCycle(
   return `${formatUsd(price)}${formatPlanCycleSuffix(validityMonths)}`;
 }
 
+// Advance is an optional prepayment quote, never an additional service charge or unreceived credit.
+export function computeAdvanceQuote(perConnection: number | null | undefined, connectionCount: number) {
+  const configured = perConnection !== null && perConnection !== undefined;
+  const count = Math.max(1, Math.floor(connectionCount || 1));
+  const grossAmount = roundUsd((perConnection ?? 0) * count);
+  const discountPercent = configured ? getBulkDiscountPercent(count) : 0;
+  const discountAmount = roundUsd(grossAmount * discountPercent / 100);
+  const quotedAmount = roundUsd(grossAmount - discountAmount);
+  return {
+    configured, grossAmount, discountPercent, discountAmount, quotedAmount,
+    status: !configured ? 'NotConfigured' : perConnection === 0 ? 'NotRequired' : quotedAmount === 0 ? 'Waived' : 'Quoted',
+  };
+}
+
 export function computeBillAmounts(params: {
   connectionType: ConnectionType;
   planRentalUsd: number;
@@ -151,29 +165,32 @@ export function computeBillAmounts(params: {
   equipmentReplacementUsd: number;
   previousArrearsUsd: number;
   adjustmentUsd?: number;
+  advancePerConnection?: number | null;
 }) {
   const qty = Math.max(1, Math.floor(params.connectionCount || 1));
-  const discountPercent = getBulkDiscountPercent(qty);
+  const discountPercent = params.includeSecurityDeposit ? getBulkDiscountPercent(qty) : 0;
   const depositPerLine = params.includeSecurityDeposit ? SECURITY_DEPOSIT_USD[params.connectionType] : 0;
   const securityDepositGrossUsd = roundUsd(depositPerLine * qty);
   const rentalTotalUsd = roundUsd(params.planRentalUsd * qty);
 
-  // Bulk discount applies to plan rental and security deposit
-  const discountOnRental = roundUsd((rentalTotalUsd * discountPercent) / 100);
+  // Bulk tiers reduce the deposit for this order; recurring service charges stay at full price.
   const discountOnDeposit = roundUsd((securityDepositGrossUsd * discountPercent) / 100);
-  const bulkDiscountAmountUsd = roundUsd(discountOnRental + discountOnDeposit);
+  const bulkDiscountAmountUsd = discountOnDeposit;
 
-  const netRentalUsd = roundUsd(rentalTotalUsd - discountOnRental);
   const netDepositUsd = roundUsd(securityDepositGrossUsd - discountOnDeposit);
 
-  // 12.24% Service tax applies ONLY to taxable services (rental net of discount, usage, equipment)
-  // Refundable security deposit is strictly non-taxable
+  // Preserve the current tax policy: rental, usage and equipment are taxable; deposits are excluded.
+  // The specification's "whole bill" wording still needs clarification for refundable deposits.
   const taxableServicesUsd = roundUsd(
-    Math.max(0, netRentalUsd + params.usageChargesUsd + params.equipmentReplacementUsd),
+    Math.max(0, rentalTotalUsd + params.usageChargesUsd + params.equipmentReplacementUsd),
   );
   const serviceTaxUsd = roundUsd(taxableServicesUsd * SERVICE_TAX_RATE);
   const subtotalBeforeTaxUsd = roundUsd(taxableServicesUsd + netDepositUsd + params.previousArrearsUsd);
-  const totalBilledUsd = roundUsd(
+  const serviceInvoiceTotalUsd = roundUsd(
+    taxableServicesUsd + serviceTaxUsd + params.previousArrearsUsd + (params.adjustmentUsd ?? 0),
+  );
+  // This total spans two separate obligations: an Order deposit receipt and a postpaid service bill.
+  const totalEstimatedUsd = roundUsd(
     taxableServicesUsd +
       serviceTaxUsd +
       netDepositUsd +
@@ -190,7 +207,9 @@ export function computeBillAmounts(params: {
     taxableServicesUsd,
     subtotalBeforeTaxUsd,
     serviceTaxUsd,
-    totalBilledUsd,
+    serviceInvoiceTotalUsd,
+    totalEstimatedUsd,
+    advanceQuote: computeAdvanceQuote(params.advancePerConnection, qty),
   };
 }
 

@@ -39,14 +39,12 @@ import {
   createBillingRecord,
   getBillingAccount,
   recordPayment,
-  refundDeposit,
 } from '../../services/billingApi';
 import {
   ApiError,
   type BillingView,
   type CreateInvoiceInput,
   type RecordPaymentInput,
-  type RefundDepositInput,
 } from '../../types/nexus';
 import { BillingAccountDrawer } from './BillingAccountDrawer';
 import {
@@ -88,7 +86,6 @@ export function BillingRegistrySection({
   const drawerSeqRef = useRef(0);
   const generatingBillRef = useRef(false);
   const processingPaymentRef = useRef(false);
-  const refundingDepositRef = useRef(false);
   const hasMountedRefreshRef = useRef(false);
   const recordsRef = useRef(records);
 
@@ -265,8 +262,7 @@ export function BillingRegistrySection({
     if (
       !normalized ||
       processingPaymentRef.current ||
-      generatingBillRef.current ||
-      refundingDepositRef.current
+      generatingBillRef.current
     ) {
       return;
     }
@@ -317,61 +313,6 @@ export function BillingRegistrySection({
       }
     } finally {
       processingPaymentRef.current = false;
-      if (isMountedRef.current) {
-        setBusyAccountId(null);
-      }
-    }
-  };
-
-  const handleRefundDeposit = async (accountId: string, input?: RefundDepositInput) => {
-    const normalized = normalizeAccountId(accountId);
-    if (
-      !normalized ||
-      refundingDepositRef.current ||
-      generatingBillRef.current ||
-      processingPaymentRef.current
-    ) {
-      return;
-    }
-    refundingDepositRef.current = true;
-    setBusyAccountId(normalized);
-    setActionError(null);
-    setDrawerError(null);
-
-    try {
-      const updated = await refundDeposit(normalized, input);
-      if (!isMountedRef.current) return;
-      onRecordUpsert(updated);
-      setDrawerRecord((prev) =>
-        prev && prev.accountId === updated.accountId ? updated : prev,
-      );
-      toast({
-        body: `Disbursed security deposit refund of ${formatUsd(updated.refundAmount ?? 0)} for ${updated.accountId}.`,
-      });
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      const msg = formatBillingError(
-        err,
-        normalized,
-        `Could not disburse security deposit refund for ${normalized}.`,
-      );
-      setActionError(msg);
-      if (drawerOpen) {
-        setDrawerError(msg);
-      }
-      if (err instanceof ApiError && err.status === 409) {
-        void getBillingAccount(normalized)
-          .then((fresh) => {
-            if (!isMountedRef.current) return;
-            onRecordUpsert(fresh);
-            setDrawerRecord((prev) =>
-              prev && prev.accountId === fresh.accountId ? fresh : prev,
-            );
-          })
-          .catch(() => { });
-      }
-    } finally {
-      refundingDepositRef.current = false;
       if (isMountedRef.current) {
         setBusyAccountId(null);
       }
@@ -655,7 +596,6 @@ export function BillingRegistrySection({
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
         onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
-        onRefundDeposit={(id, input) => void handleRefundDeposit(id, input)}
       />
     </VStack>
   );

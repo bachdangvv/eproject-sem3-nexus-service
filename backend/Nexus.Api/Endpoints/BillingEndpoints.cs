@@ -33,7 +33,7 @@ public static class BillingEndpoints
         {
             var (ok, input, error) = await EndpointHelpers.TryReadOptionalJsonAsync<RefundDepositInput>(http, cancellationToken);
             if (!ok) return error!;
-            return Results.Ok(await service.RefundDepositAsync(accountId, input, EndpointHelpers.ActorId(user)));
+            return Results.Problem("Refund through /api/deposits/{orderId}/refunds with amount, operationId, method, reference and note.", statusCode: 409);
         });
 
         var retailBilling = api.MapGroup("/retail/billing/accounts")

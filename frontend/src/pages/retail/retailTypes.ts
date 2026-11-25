@@ -152,6 +152,7 @@ export const ORDER_STATUS_FILTER_ITEMS: Array<{
   { value: 'Feasible', label: 'Feasible' },
   { value: 'NotFeasible', label: 'Not Feasible' },
   { value: 'Connected', label: 'Connected' },
+  { value: 'Cancelled', label: 'Cancelled' },
 ];
 
 export const FEEDBACK_RATING_OPTIONS: Array<{ value: string; label: string }> = [
