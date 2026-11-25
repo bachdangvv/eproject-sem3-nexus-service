@@ -257,7 +257,7 @@ export function RetailBillingSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(180),
+      width: pixel(245),
       renderCell: (r: RetailBillingRow) => <CopyableId value={r.accountId} label="Account ID" />,
     },
     {

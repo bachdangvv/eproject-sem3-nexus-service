@@ -344,13 +344,13 @@ export function BillingAccountsSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(235),
+      width: pixel(245),
       renderCell: (row) => <CopyableId value={row.accountId} label="Account ID" />,
     },
     {
       key: 'orderId',
       header: 'Order ID',
-      width: pixel(190),
+      width: pixel(205),
       renderCell: (row) => <CopyableId value={row.orderId} label="Order ID" />,
     },
     {

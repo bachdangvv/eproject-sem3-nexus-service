@@ -74,9 +74,11 @@ export function lastPaymentAt(record: Pick<BillingView, 'paidAt' | 'payments'>):
 export function CopyableId({
   value,
   label,
+  wrap = false,
 }: {
   value: string;
   label?: string;
+  wrap?: boolean;
 }) {
   const toast = useToast();
   const handleCopy = () => {
@@ -86,7 +88,7 @@ export function CopyableId({
     toast({ body: `Copied ${label || 'ID'}: ${value}` });
   };
   return (
-    <HStack gap={1} vAlign="center" wrap="nowrap">
+    <HStack gap={1} vAlign="center" wrap={wrap ? 'wrap' : 'nowrap'}>
       <Code>{value}</Code>
       <Button
         size="sm"

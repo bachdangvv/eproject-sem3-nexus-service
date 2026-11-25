@@ -329,7 +329,7 @@ export function VendorPaymentsSection({
     {
       key: 'paymentNumber',
       header: 'Payment #',
-      width: pixel(180),
+      width: pixel(195),
       renderCell: (row) => (
         <VStack gap={0.5}>
           <CopyableId value={row.paymentNumber} label="Payment #" />
@@ -342,7 +342,7 @@ export function VendorPaymentsSection({
     {
       key: 'purchaseOrder',
       header: 'Purchase Order',
-      width: pixel(180),
+      width: pixel(195),
       renderCell: (row) => (
         <VStack gap={0.5}>
           <CopyableId value={row.purchaseOrderNumber} label="PO" />

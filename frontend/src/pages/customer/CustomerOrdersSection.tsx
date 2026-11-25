@@ -455,7 +455,7 @@ export function CustomerOrdersSection({
     {
       key: 'code',
       header: 'Order Code',
-      width: pixel(165),
+      width: pixel(205),
       renderCell: (o) => <CopyableId value={o.code} label="Order Code" />,
     },
     {
@@ -496,7 +496,7 @@ export function CustomerOrdersSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(180),
+      width: pixel(245),
       renderCell: (o) =>
         o.accountId ? (
           <CopyableId value={o.accountId} label="Account ID" />

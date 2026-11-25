@@ -547,7 +547,7 @@ export function DocumentsSection({
     {
       key: 'customer',
       header: 'Customer',
-      width: proportional(1.4, { minWidth: 180 }),
+      width: proportional(1.4, { minWidth: 200 }),
       renderCell: (row) => (
         <VStack gap={0.5}>
           <Text weight="semibold">{row.customerName}</Text>
@@ -1011,7 +1011,7 @@ export function DocumentsSection({
                       {detailTarget.hasStoredFile ? 'Stored Binary File' : 'Reference Path / URL'}
                     </MetadataListItem>
                     <MetadataListItem label="File Path or URL">
-                      <CopyableId value={detailTarget.filePathOrUrl} label="Path/URL" />
+                      <CopyableId value={detailTarget.filePathOrUrl} label="Path/URL" wrap />
                     </MetadataListItem>
                     {detailTarget.hasStoredFile && (
                       <>

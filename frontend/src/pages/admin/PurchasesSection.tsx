@@ -390,7 +390,7 @@ export function PurchasesSection({
     {
       key: 'orderNumber',
       header: 'PO Number',
-      width: pixel(180),
+      width: pixel(195),
       renderCell: (row) => (
         <VStack gap={0.5}>
           <CopyableId value={row.orderNumber} label="PO" />

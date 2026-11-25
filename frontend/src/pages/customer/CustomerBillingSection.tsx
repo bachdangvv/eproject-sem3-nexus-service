@@ -275,7 +275,7 @@ export function CustomerBillingSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(180),
+      width: pixel(245),
       renderCell: (c) => <CopyableId value={c.accountId} label="Account ID" />,
     },
     {
@@ -342,7 +342,7 @@ export function CustomerBillingSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(180),
+      width: pixel(245),
       renderCell: (b) => <CopyableId value={b.accountId} label="Account ID" />,
     },
     {

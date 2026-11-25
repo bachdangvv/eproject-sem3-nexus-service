@@ -381,7 +381,7 @@ export function VendorsSection({
     {
       key: 'code',
       header: 'Vendor Code',
-      width: pixel(140),
+      width: pixel(215),
       renderCell: (row) => <CopyableId value={row.code} label="Vendor" />,
     },
     {

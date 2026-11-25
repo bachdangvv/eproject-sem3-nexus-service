@@ -295,7 +295,7 @@ export function TechnicalConnectionsSection({
     {
       key: 'code',
       header: 'Order ID',
-      width: pixel(190),
+      width: pixel(205),
       renderCell: (row) => <CopyableId value={row.code} label="Order ID" />,
     },
     {

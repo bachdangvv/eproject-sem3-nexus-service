@@ -480,7 +480,7 @@ export function CustomerSupportSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(175),
+      width: pixel(245),
       renderCell: (pc) =>
         pc.accountId ? (
           <CopyableId value={pc.accountId} label="Account ID" />
@@ -555,7 +555,7 @@ export function CustomerSupportSection({
     {
       key: 'code',
       header: 'Order Code',
-      width: pixel(165),
+      width: pixel(205),
       renderCell: (o) => <CopyableId value={o.code} label="Order Code" />,
     },
     {

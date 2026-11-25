@@ -274,7 +274,7 @@ export function TechnicalLifecycleSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(205),
+      width: pixel(245),
       renderCell: (row) => <CopyableId value={row.accountId} label="Account ID" />,
     },
     {

@@ -524,7 +524,7 @@ export function TechnicalEquipmentSection({
     {
       key: 'account',
       header: 'Subscriber Account',
-      width: pixel(210),
+      width: pixel(245),
       renderCell: (row) => (
         <VStack gap={0.5}>
           <CopyableId value={row.accountId} label="Account ID" />

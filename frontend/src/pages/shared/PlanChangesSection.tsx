@@ -408,7 +408,7 @@ export function PlanChangesSection({
     {
       key: 'connection',
       header: 'Connection & Customer',
-      width: proportional(1.5, { minWidth: 205 }),
+      width: proportional(1.5, { minWidth: 245 }),
       renderCell: (row) => (
         <VStack gap={0.5}>
           {row.accountId ? (

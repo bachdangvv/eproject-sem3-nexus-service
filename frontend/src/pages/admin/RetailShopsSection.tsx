@@ -396,7 +396,7 @@ export function RetailShopsSection({
     {
       key: 'code',
       header: 'Outlet Code',
-      width: pixel(130),
+      width: pixel(205),
       renderCell: (row) => <CopyableId value={row.code} label="Code" />,
     },
     {

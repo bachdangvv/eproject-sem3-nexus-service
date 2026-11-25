@@ -278,7 +278,7 @@ export function TechnicalOrdersSection({
     {
       key: 'code',
       header: 'Order ID',
-      width: pixel(180),
+      width: pixel(205),
       renderCell: (row) => <CopyableId value={row.code} label="Order ID" />,
     },
     {
@@ -312,7 +312,7 @@ export function TechnicalOrdersSection({
     {
       key: 'accountId',
       header: 'Account ID',
-      width: pixel(225),
+      width: pixel(245),
       renderCell: (row) =>
         row.accountId ? (
           <CopyableId value={row.accountId} label="Account ID" />
