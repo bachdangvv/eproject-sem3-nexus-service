@@ -28,28 +28,22 @@ public static class PublicEndpoints
             });
         });
 
-        api.MapGet("/public/track/account/{accountId}", async (string accountId, IOperationsStore operations, IBillingStore bills) =>
+        api.MapGet("/public/track/account/{accountId}", async (string accountId, IOperationsStore operations) =>
         {
             var order = await operations.FindOrderByAccountIdAsync(accountId);
             if (order is null) return Results.NotFound();
 
-            var invoices = await bills.ListInvoicesAsync(order.Connection!.Id);
-            var dueAmount = invoices
-                .Where(i => i.Status is "Unpaid" or "PartiallyPaid")
-                .Sum(i => i.DueAmount);
-
             return Results.Ok(new
             {
                 type = "account",
-                id = order.Connection.AccountId,
+                id = order.Connection!.AccountId,
                 orderId = order.Code,
                 serviceType = ServiceType(order.Request.Type),
                 status = order.Status == Nexus.Domain.OrderStatus.Connected
                     ? order.Connection.Status
                     : order.Status.ToString(),
                 cityCode = order.Request.CityCode,
-                accountId = order.Connection.AccountId,
-                dueAmount
+                accountId = order.Connection.AccountId
             });
         });
 

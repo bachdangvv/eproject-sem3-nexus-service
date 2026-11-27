@@ -1,3 +1,8 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Nexus.Domain;
 
 namespace Nexus.Application;
@@ -80,6 +85,7 @@ public sealed record BillingView(
 /// <summary>Persistence port for connection invoices, payment transactions, and billing account queries.</summary>
 public interface IBillingStore
 {
+    Task<PaymentTransaction?> FindPaymentByOperationIdAsync(string operationId);
     Task<Invoice?> FindLatestInvoiceAsync(long connectionId);
     Task<Invoice?> ReadLatestInvoiceAsync(long connectionId);
     Task<IReadOnlyList<Invoice>> ListInvoicesAsync(long connectionId);
@@ -141,6 +147,11 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         var end = input?.PeriodEnd is { } pe ? NormalizeUtc(pe) : start.AddMonths(validityMonths);
         if (end <= start)
             throw new UseCaseException(UseCaseFailure.InvalidInput, "Billing period end must be after billing period start.");
+
+        // Historical imports with an unknown period have start == end. Never rewrite them.
+        if (existingInvoices.Any(i => i.BillingPeriodStart < i.BillingPeriodEnd &&
+            i.BillingPeriodStart < end && start < i.BillingPeriodEnd))
+            throw new UseCaseException(UseCaseFailure.Conflict, "An invoice already covers all or part of this billing period. Refresh the account and choose a different period.");
 
         var count = Math.Max(1, order.Request.ConnectionCount);
         var baseRental = order.Request.SnapshotPrice > 0 ? order.Request.SnapshotPrice : order.Request.Plan!.Price;
@@ -206,8 +217,13 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             CreatedById = actorId
         };
 
+        order.Connection.BillingVersion++;
         bills.Add(invoice);
-        await bills.SaveChangesAsync();
+        try { await bills.SaveChangesAsync(); }
+        catch (StoreWriteException)
+        {
+            throw new UseCaseException(UseCaseFailure.Conflict, "The account changed during invoice issuance. Refresh and check its invoices before retrying.");
+        }
 
         var updatedInvoices = await bills.ListInvoicesAsync(connectionId);
         return ToView(order, invoice, updatedInvoices);
@@ -215,7 +231,9 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
 
     public async Task<BillingView> PayAsync(string accountId, RecordPaymentInput? input, int actorId, string channel = "CityOffice")
     {
-        if (input?.Amount is { } specified)
+        if (input is null || input.OperationId is not { } operationId || !Regex.IsMatch(operationId, "^[a-zA-Z0-9-]{16,64}$"))
+            throw new UseCaseException(UseCaseFailure.InvalidInput, "A stable operationId is required. Reuse it when retrying the same payment.");
+        if (input.Amount is { } specified)
         {
             if (specified <= 0m)
                 throw new UseCaseException(UseCaseFailure.InvalidInput, "Payment amount must be greater than zero.");
@@ -225,21 +243,45 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
 
         var order = await FindConnectedOrderAsync(accountId);
         var connectionId = order.Connection!.Id;
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+        {
+            AccountId = order.Connection.AccountId, ActorId = actorId, Channel = channel,
+            input.InvoiceId, Amount = input.Amount?.ToString("0.00", CultureInfo.InvariantCulture), Note = input.Note?.Trim() ?? ""
+        }))));
+        var replay = await bills.FindPaymentByOperationIdAsync(operationId);
+        if (replay is not null)
+        {
+            EnsurePaymentReplay(replay, fingerprint);
+            return await FindAsync(accountId);
+        }
+
+        if (input.InvoiceId is { } requestedId &&
+            !(await bills.ListInvoicesAsync(connectionId)).Any(i => i.Id == requestedId))
+            throw new UseCaseException(UseCaseFailure.NotFound, "Invoice not found.");
         var invoice = await bills.FindLatestInvoiceAsync(connectionId)
             ?? throw new UseCaseException(UseCaseFailure.Conflict, "Create a billing record before recording payment.");
 
-        if (invoice.Status == "Paid")
+        var payAmount = input.Amount ?? invoice.DueAmount;
+        string? conflict = null;
+        if (input.InvoiceId is { } invoiceId && invoice.Id != invoiceId)
+            conflict = "Only the current active invoice can be paid.";
+        else if (invoice.Status == "Paid")
+            conflict = "This invoice is already paid. Check payment history before recording another receipt.";
+        else if (invoice.Status == "RolledOver")
+            conflict = "Cannot record payment against a rolled-over invoice.";
+        else if (payAmount <= 0m || payAmount > invoice.DueAmount)
+            conflict = "Payment must be within the invoice's remaining debt. Refresh the invoice before recording the receipt.";
+        if (conflict is not null)
         {
-            var currentInvoices = await bills.ListInvoicesAsync(connectionId);
-            return ToView(order, invoice, currentInvoices);
+            // The original request may have committed after the first operation lookup.
+            var completed = await bills.FindPaymentByOperationIdAsync(operationId);
+            if (completed is not null)
+            {
+                EnsurePaymentReplay(completed, fingerprint);
+                return await FindAsync(accountId);
+            }
+            throw new UseCaseException(UseCaseFailure.Conflict, conflict);
         }
-
-        if (invoice.Status == "RolledOver")
-            throw new UseCaseException(UseCaseFailure.Conflict, "Cannot record payment against a rolled-over invoice.");
-
-        var payAmount = input?.Amount ?? invoice.DueAmount;
-        if (payAmount <= 0m || payAmount > invoice.DueAmount)
-            throw new UseCaseException(UseCaseFailure.Conflict, "Payment must be within the invoice's remaining debt. Refresh the invoice before recording the receipt.");
         var actor = await operations.FindEmployeeByIdAsync(actorId)
             ?? throw new UseCaseException(UseCaseFailure.Unauthorized);
 
@@ -253,7 +295,9 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
             PaidById = actorId,
             RetailShopId = actor.RetailShopId,
             Channel = channel,
-            Note = input?.Note?.Trim()
+            Note = input.Note?.Trim(),
+            OperationId = operationId,
+            RequestFingerprint = fingerprint
         };
         bills.Add(payment);
 
@@ -271,14 +315,25 @@ public sealed class BillingService(IOperationsStore operations, IBillingStore bi
         }
 
         try { await bills.SaveChangesAsync(); }
-        catch (StoreWriteException error) when (error.ConcurrentChange)
+        catch (StoreWriteException)
         {
-            // Another collector's success is not evidence that this receipt was saved.
+            var saved = await bills.FindPaymentByOperationIdAsync(operationId);
+            if (saved is not null)
+            {
+                EnsurePaymentReplay(saved, fingerprint);
+                return await FindAsync(accountId);
+            }
             throw new UseCaseException(UseCaseFailure.Conflict, "Invoice changed concurrently. Refresh and check payment history before retrying.");
         }
 
         var updatedAll = await bills.ListInvoicesAsync(connectionId);
         return ToView(order, invoice, updatedAll);
+    }
+
+    private static void EnsurePaymentReplay(PaymentTransaction payment, string fingerprint)
+    {
+        if (payment.RequestFingerprint != fingerprint)
+            throw new UseCaseException(UseCaseFailure.Conflict, "Operation ID has already been used for a different payment.");
     }
 
     private static DateTime NormalizeUtc(DateTime value) =>

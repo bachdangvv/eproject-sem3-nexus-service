@@ -506,6 +506,9 @@ public sealed partial class EfNexusStore(NexusDb db) : ICatalogStore, IOperation
     public void Add(Invoice invoice) => db.Invoices.Add(invoice);
     public void Add(PaymentTransaction payment) => db.Payments.Add(payment);
 
+    public Task<PaymentTransaction?> FindPaymentByOperationIdAsync(string operationId) =>
+        db.Payments.AsNoTracking().SingleOrDefaultAsync(p => p.OperationId == operationId);
+
     public Task<Invoice?> FindLatestInvoiceAsync(long connectionId) =>
         db.Invoices.Include(i => i.Payments).ThenInclude(p => p.PaidBy)
             .Include(i => i.PaidBy).Where(i => i.ConnectionId == connectionId)

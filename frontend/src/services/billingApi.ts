@@ -4,6 +4,8 @@ import type {
   RecordPaymentInput,
 } from '../types/nexus';
 import { apiRequest } from './apiClient';
+import { getSession } from './authApi';
+import { withPaymentOperation } from './paymentRetry';
 
 export interface BillingFilterParams {
   q?: string;
@@ -45,17 +47,14 @@ export function createBillingRecord(
   );
 }
 
-export function recordPayment(
+export async function recordPayment(
   accountId: string,
   input?: RecordPaymentInput,
 ): Promise<BillingView> {
-  return apiRequest<BillingView>(
-    `/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/payment`,
-    {
-      method: 'POST',
-      body: input ? JSON.stringify(input) : undefined,
-    },
-  );
+  const path = `/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/payment`;
+  const session = await getSession();
+  return withPaymentOperation(`${session.username}:${path}`, input, body =>
+    apiRequest<BillingView>(path, { method: 'POST', body: JSON.stringify(body) }));
 }
 
 // Retail Department In-Store Billing & Payments (Role = Retail)
@@ -71,15 +70,12 @@ export function getRetailBillingAccount(accountId: string): Promise<BillingView>
   );
 }
 
-export function recordRetailPayment(
+export async function recordRetailPayment(
   accountId: string,
   input?: RecordPaymentInput,
 ): Promise<BillingView> {
-  return apiRequest<BillingView>(
-    `/retail/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/payment`,
-    {
-      method: 'POST',
-      body: input ? JSON.stringify(input) : undefined,
-    },
-  );
+  const path = `/retail/billing/accounts/${encodeURIComponent(accountId.trim().toUpperCase())}/payment`;
+  const session = await getSession();
+  return withPaymentOperation(`${session.username}:${path}`, input, body =>
+    apiRequest<BillingView>(path, { method: 'POST', body: JSON.stringify(body) }));
 }

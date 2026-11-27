@@ -60,7 +60,7 @@ export interface BillingAccountDrawerProps {
   onDismissError?: () => void;
   onRefresh?: (accountId: string) => void;
   onCreateBill?: (accountId: string, input?: CreateInvoiceInput) => Promise<void> | void;
-  onRecordPayment?: (accountId: string, input?: RecordPaymentInput) => Promise<void> | void;
+  onRecordPayment?: (accountId: string, input?: RecordPaymentInput) => Promise<boolean>;
 }
 
 interface InvoiceFormErrors {
@@ -231,11 +231,12 @@ export function BillingAccountDrawer({
     }
     setPaymentAmountError(null);
     const input: RecordPaymentInput = {
+      invoiceId: record.invoiceId,
       amount: value,
       channel: 'CityOffice',
       note: paymentNote.trim() || undefined,
     };
-    await onRecordPayment(record.accountId, input);
+    if (!await onRecordPayment(record.accountId, input)) return;
     setShowPaymentForm(false);
     setPaymentAmount('');
     setPaymentNote('');

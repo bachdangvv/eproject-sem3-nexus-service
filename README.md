@@ -2,7 +2,7 @@
 
 Hệ thống quản lý tiếp thị dịch vụ, khảo sát lắp đặt hạ tầng viễn thông và thanh toán cước trực tuyến của **Nexus Communication System** (*eProject Semester 3 — FPT Aptech*), phục vụ 3 nhóm dịch vụ cốt lõi: **Broadband (`B`)**, **Landline / Telephone (`T`)** và **Dial-Up (`D`)**.
 
-**Đối chiếu sheet công việc ngày 25/11/2026:** **11/38 đầu việc đạt, 25 một phần, 2 chưa xác minh** theo deliverable của từng dòng. [Ma trận 38 task, owner, bằng chứng và phần thiếu](docs/task-sheet-verification.md). Lượt kiểm tra này tái hiện thêm mất bill Review 1 khi migration, bill trùng kỳ, retry thu cước bị ghi thêm và public tracking lộ dư nợ trái tiêu chí sheet. Ước lượng 97%/88% chức năng [trước đó](docs/completion-review.md) chưa bao phủ các ca này, cần được rà lại sau khi đóng blocker. Các bảng kế hoạch ngày 18/11 ở mục 6 giữ nguyên để tham chiếu lịch sử.
+**Billing:** Nâng cấp từ Review 1 giữ hóa đơn cũ; hóa đơn mới không được trùng hoặc chồng kỳ. Thu cước dùng `operationId` để gửi lại an toàn. Tracking công khai chỉ trả trạng thái và mã tham chiếu. Database đã bị bản migration cũ xóa `BillingRecords` cần phục hồi từ backup; migration không tự khôi phục dữ liệu đã mất. Xem [API](docs/api.md).
 
 ---
 
@@ -54,7 +54,7 @@ Retail, Billing và Customer xem payment của tất cả hóa đơn trong Accou
 
 **Luồng test chi tiết:** [Lịch sử thanh toán qua nhiều kỳ](docs/payment-history-flow.md), gồm số tiền ba kỳ, bốn kênh, kiểm tra quyền sở hữu, tranh chấp và ảnh UI ba vai trò. Không có mock API hoặc fallback payment trong giao diện. Chức năng CustomerPortal hiện ghi nhận payment vào DB, chưa xử lý/đối soát tiền qua cổng thanh toán thật.
 
-**Test tích hợp bốn phần đã sửa:** [Bulk → cọc → advance → lịch sử payment → hủy/hoàn](docs/test-four-fixed-flows.md). Có luồng 10 đường qua hai kỳ, nhánh 51 đường miễn thu rồi hủy, hủy khi thu một phần và bảng phân biệt các blocker audit vẫn còn mở.
+**Test tích hợp bốn phần đã sửa:** [Bulk → cọc → advance → lịch sử payment → hủy/hoàn](docs/test-four-fixed-flows.md). Có luồng 10 đường qua hai kỳ, nhánh 51 đường miễn thu rồi hủy, hủy khi thu một phần và các ca kiểm tra bổ sung.
 
 ### Quy chuẩn mã định danh tự động
 | Loại mã | Định dạng | Ví dụ | Thời điểm cấp |
@@ -64,7 +64,7 @@ Retail, Billing và Customer xem payment của tất cả hóa đơn trong Accou
 | **Account ID** *(16 ký tự)* | `[D\|B\|T]` + `Mã vùng 3 số` + `12 chữ số` | `B101000000000001` | Khi bộ phận Technical kích hoạt kết nối (`Connected`) thành công |
 
 ### Luồng vận hành liên phòng ban
-1. **Cổng công khai (`/`, `/track`, `/login` & `/register`):** Giới thiệu dịch vụ, nạp bảng giá gói cước đang hoạt động từ `/api/public/plans`, danh mục thành phố (`/api/public/cities`), tra cứu FAQ động ngay trên trang chủ (`/api/faq`), tra cứu trạng thái đơn hàng hoặc kết nối thực tế (`Active` / `TemporarilyInactive` / `PermanentlyInactive`) kèm dư nợ (`dueAmount`) bằng `Order ID` (11 ký tự) hoặc `Account ID` (16 ký tự) đảm bảo **Zero-PII** (không lộ tên/địa chỉ thuê bao), đăng nhập chung (`/login`) và **tự đăng ký tài khoản khách hàng (`/register` → `POST /api/register`)** kích hoạt ngay (`ACTIVE`) kèm phiên đăng nhập tức thì.
+1. **Cổng công khai (`/`, `/track`, `/login` & `/register`):** Giới thiệu dịch vụ, nạp bảng giá gói cước đang hoạt động từ `/api/public/plans`, danh mục thành phố (`/api/public/cities`), tra cứu FAQ động ngay trên trang chủ (`/api/faq`), tra cứu trạng thái đơn hàng hoặc kết nối thực tế (`Active` / `TemporarilyInactive` / `PermanentlyInactive`) không công khai số dư tài chính, bằng `Order ID` (11 ký tự) hoặc `Account ID` (16 ký tự) đảm bảo **Zero-PII** (không lộ tên/địa chỉ thuê bao), đăng nhập chung (`/login`) và **tự đăng ký tài khoản khách hàng (`/register` → `POST /api/register`)** kích hoạt ngay (`ACTIVE`) kèm phiên đăng nhập tức thì.
 2. **Retail Outlet (`/retail/*`):** Tiếp nhận & cập nhật hồ sơ khách hàng, lập phiếu yêu cầu dịch vụ, xác nhận đơn sinh `Order ID` (`Pending`), ghi nhận phản hồi (`Feedback` 1–5 sao), thu cước trực tiếp tại quầy (`RetailOutlet`, hỗ trợ thanh toán từng phần `PartiallyPaid`), lưu trữ/tải lên hồ sơ chứng từ khách hàng theo năm & mã vùng, gửi yêu cầu đổi gói cước cùng loại dịch vụ và tiếp nhận/đóng câu hỏi hỗ trợ khách hàng.
 3. **Technical Department (`/technical/*`):** Thẩm định khả thi kỹ thuật (khoảng cách tuyến cáp, dung lượng port server, đường dây Landline đối với gói Dial-Up → `Feasible` hoặc `Not Feasible`), kích hoạt kết nối (`Connected`) sau khi thu đủ/miễn cọc, cấp `Account ID` 16 ký tự kèm trừ tồn kho thiết bị theo `ConnectionCount`, quản lý tồn kho/sự cố hỏng hóc thiết bị, vận hành vòng đời kết nối (`Suspend`, `Reactivate`, `Terminate` mở quyền hoàn số dư cọc thực giữ) và phê duyệt/từ chối yêu cầu đổi gói cước.
 4. **Billing Department (`/billing/*`):** Tra cứu `Account ID` (kèm tìm kiếm `?q=`), phát hành hóa đơn chu kỳ mới (tự động cộng phí sự cố thiết bị chưa thanh toán, kết chuyển hóa đơn cũ sang `RolledOver`, tính thuế dịch vụ 12.24%, không cộng cọc vào bill mới), ghi nhận thanh toán `CityOffice` (`PartiallyPaid`/`Paid`) và giải ngân hoàn trả tiền đặt cọc (`POST /api/deposits/{orderId}/refunds`) cho thuê bao đã chấm dứt.

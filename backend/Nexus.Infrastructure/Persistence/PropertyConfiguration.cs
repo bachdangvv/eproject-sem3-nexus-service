@@ -118,6 +118,7 @@ public abstract partial class NexusDb
 
         model.Entity<Connection>(entity =>
         {
+            entity.Property(connection => connection.BillingVersion).IsConcurrencyToken();
             entity.Ignore(connection => connection.AccountId);
             entity.Property(connection => connection.Type).HasMaxLength(1);
             entity.Property(connection => connection.CityCode).HasMaxLength(3);
@@ -161,6 +162,9 @@ public abstract partial class NexusDb
 
         model.Entity<PaymentTransaction>(entity =>
         {
+            entity.Property(payment => payment.OperationId).HasMaxLength(64);
+            entity.Property(payment => payment.RequestFingerprint).HasMaxLength(64);
+            entity.HasIndex(payment => payment.OperationId).IsUnique();
             entity.Property(payment => payment.Channel).HasMaxLength(30);
             entity.Property(payment => payment.Note).HasMaxLength(250);
         });

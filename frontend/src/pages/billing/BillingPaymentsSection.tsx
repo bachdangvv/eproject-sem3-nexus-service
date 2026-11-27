@@ -237,7 +237,7 @@ export function BillingPaymentsSection({
       processingPaymentRef.current ||
       payingAccountId !== null
     ) {
-      return;
+      return false;
     }
     const prevRecord =
       recordsRef.current.find((r) => r.accountId === normalized) ??
@@ -249,7 +249,7 @@ export function BillingPaymentsSection({
 
     try {
       const updated = await recordPayment(normalized, input);
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       onRecordUpsert(updated);
       const collectedAmount = computeCollectedAmount(prevRecord, updated, input?.amount);
       setLastPaymentNotice({ record: updated, collectedAmount });
@@ -263,8 +263,9 @@ export function BillingPaymentsSection({
             : ''
         }.`,
       });
+      return true;
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       const msg = formatBillingError(
         err,
         normalized,
@@ -285,6 +286,7 @@ export function BillingPaymentsSection({
           })
           .catch(() => { });
       }
+      return false;
     } finally {
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
@@ -518,7 +520,7 @@ export function BillingPaymentsSection({
         error={drawerError}
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
-        onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRecordPayment={handleRecordPayment}
       />
     </Card>
   );

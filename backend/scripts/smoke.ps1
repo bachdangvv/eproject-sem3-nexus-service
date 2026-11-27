@@ -32,6 +32,10 @@ function Remove-SmokeData([string]$path) {
 }
 
 function Call($client, [string]$path, [string]$method = 'GET', $body = $null, [int]$expected = 200) {
+    if ($method -eq 'POST' -and $path -match '/payments?$') {
+        if ($null -eq $body) { $body = @{} }
+        if (-not $body.ContainsKey('operationId')) { $body.operationId = [Guid]::NewGuid().ToString() }
+    }
     $parameters = @{
         Uri = "$origin/api$path"
         Method = $method
@@ -213,7 +217,7 @@ try {
     $publicAccount = Call $public "/public/track/account/$($connected.accountId)"
     Check ($publicOrder.id -eq $order.code -and $publicOrder.accountId -eq $connected.accountId -and
         $publicAccount.id -eq $connected.accountId -and $publicAccount.orderId -eq $order.code -and
-        $publicAccount.status -eq 'Active' -and $publicAccount.dueAmount -eq 0) 'public order and account tracking'
+        $publicAccount.status -eq 'Active' -and -not $publicAccount.PSObject.Properties['dueAmount']) 'public order and account tracking excludes debt'
     Check (!$publicOrder.customerName -and !$publicOrder.route -and !$publicAccount.customerName -and !$publicAccount.route) 'public tracking omits subscriber name and address'
     $feedbackText = "K$([char]0x1EBF)t n$([char]0x1ED1)i ho$([char]0x1EA1)t $([char]0x0111)$([char]0x1ED9)ng $([char]0x1ED5)n $([char]0x0111)$([char]0x1ECB)nh."
     $null = Call $retail "$route/feedback" 'POST' @{rating=5;comment=$feedbackText} 201
@@ -235,7 +239,14 @@ try {
     $expectedTotal = [Math]::Round($bb.price * 1.1224, 2) # Service only: deposit was collected separately before activation
     Check ($bill.rentalAmount -eq $bb.price -and $bill.depositAmount -eq 0 -and $bill.taxAmount -eq 27.54 -and $bill.totalAmount -eq $expectedTotal -and $bill.status -eq 'Unpaid') 'service invoice: rental snapshot, no duplicate deposit, 12.24% tax, and unpaid status'
     $publicAfterBill = Call $public "/public/track/account/$($connected.accountId)"
-    Check ($publicAfterBill.dueAmount -eq $expectedTotal) 'public account tracking reflects unpaid dueAmount'
+    Check (-not $publicAfterBill.PSObject.Properties['dueAmount'] -and -not $publicAfterBill.PSObject.Properties['totalAmount'] -and
+        -not $publicAfterBill.PSObject.Properties['paidAmount']) 'B04 public tracking never returns invoice balances even when debt exists'
+
+    $duplicatePeriod = @{periodStart=$bill.billingPeriodStart;periodEnd=$bill.billingPeriodEnd}
+    $null = Call $billing $billingRoute 'POST' $duplicatePeriod 409
+    $afterDuplicate = Call $billing $billingRoute
+    Check ($afterDuplicate.invoices.Count -eq 1 -and $afterDuplicate.dueAmount -eq $expectedTotal) 'B02 same billing period cannot add charges or roll over its own debt'
+    $null = Call $billing "$billingRoute/payment" 'POST' @{amount=1;operationId=$null} 400
 
     $null = Call $billing "$billingRoute/payment" 'POST' @{amount=-5} 400
     Check $true 'negative payment amount rejected with 400'
@@ -245,12 +256,19 @@ try {
     Check ($retailLookup.status -eq 'Unpaid' -and $retailLookup.totalAmount -eq $expectedTotal) 'Retail till-date billing view'
 
     # Retail in-store partial payment collection
-    $partialPay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' @{amount=100;note='Cash payment at outlet'}
+    $partialInput = @{amount=100;note='Cash payment at outlet';operationId=[Guid]::NewGuid().ToString();invoiceId=$bill.invoiceId}
+    $partialPay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' $partialInput
     Check ($partialPay.status -eq 'PartiallyPaid' -and $partialPay.paidAmount -eq 100 -and $partialPay.dueAmount -eq 152.54) 'Retail partial in-store payment collection'
+    $partialReplay = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' $partialInput
+    Check ($partialReplay.paidAmount -eq 100 -and $partialReplay.payments.Count -eq 1 -and $partialReplay.payments[0].id -eq $partialPay.payments[0].id) 'B03 retail partial retry preserves one payment'
+    $null = Call $billing "$billingRoute/payment" 'POST' $partialInput 409
+    $changedPartial = $partialInput.Clone(); $changedPartial.amount = 101
+    $null = Call $retail "/retail/billing/accounts/$($connected.accountId)/payment" 'POST' $changedPartial 409
 
     # Settle remaining balance by Billing
-    $paid = Call $billing "$billingRoute/payment" 'POST'
-    $paidAgain = Call $billing "$billingRoute/payment" 'POST'
+    $settlementInput = @{operationId=[Guid]::NewGuid().ToString();invoiceId=$bill.invoiceId}
+    $paid = Call $billing "$billingRoute/payment" 'POST' $settlementInput
+    $paidAgain = Call $billing "$billingRoute/payment" 'POST' $settlementInput
     $billAgain = Call $billing $billingRoute 'POST'
     $stored = Call $billing $billingRoute
     Check ($paid.status -eq 'Paid' -and $paid.paidAt -and $paidAgain.paidAt -eq $paid.paidAt -and
@@ -379,7 +397,9 @@ try {
     $settledIncident = @(Call $technical '/technical/incidents?settled=true' | Where-Object id -eq $incident.id)
     Check ($settledIncident.Count -eq 1 -and $settledIncident[0].settled -eq $true) 'equipment incident marked settled upon invoice creation'
     # Verify RolledOver behavior on subsequent billing cycle before paying
-    $rolledNextBill = Call $billing "/billing/accounts/$($equipConnected.accountId)" 'POST' @{localMinutes=0;stdMinutes=0;mobileMinutes=0;periodStart='2026-12-01T00:00:00Z';periodEnd='2027-01-01T00:00:00Z'}
+    $equipmentBill = Call $billing "/billing/accounts/$($equipConnected.accountId)"
+    $nextEquipmentStart = [DateTime]::Parse($equipmentBill.billingPeriodEnd).ToUniversalTime()
+    $rolledNextBill = Call $billing "/billing/accounts/$($equipConnected.accountId)" 'POST' @{localMinutes=0;stdMinutes=0;mobileMinutes=0;periodStart=$nextEquipmentStart.ToString('o');periodEnd=$nextEquipmentStart.AddMonths(1).ToString('o')}
     Check (@($rolledNextBill.invoices | Where-Object status -eq 'RolledOver').Count -eq 1) 'prior unpaid invoice rolled over cleanly without double-counting'
     $null = Call $billing "/billing/accounts/$($equipConnected.accountId)/payment" 'POST'
 
@@ -550,7 +570,10 @@ try {
     $custBillsBefore = @(Call $regClient '/customer/billing')
     $custBill = ($custBillsBefore | Where-Object accountId -eq $custAccountId)[0]
     Check ($custBill.status -eq 'Unpaid' -and $custBill.dueAmount -gt 0) 'customer billing view shows unpaid invoice'
-    $onlinePartial = Call $regClient "/customer/billing/$custAccountId/payments" 'POST' @{invoiceId=$custBill.invoiceId;amount=100.00;note='Online partial payment'} 201
+    $onlineInput = @{invoiceId=$custBill.invoiceId;amount=100.00;note='Online partial payment';operationId=[Guid]::NewGuid().ToString()}
+    $onlinePartial = Call $regClient "/customer/billing/$custAccountId/payments" 'POST' $onlineInput 201
+    $onlineReplay = Call $regClient "/customer/billing/$custAccountId/payments" 'POST' $onlineInput 201
+    Check ($onlineReplay.paidAmount -eq 100 -and $onlineReplay.payments.Count -eq 1) 'B03 customer payment retry shares the original receipt'
     Check ($onlinePartial.status -eq 'PartiallyPaid' -and (@($onlinePartial.payments | Where-Object channel -eq 'CustomerPortal').Count -eq 1)) 'customer online partial payment uses CustomerPortal channel'
     $onlineFull = Call $regClient "/customer/billing/$custAccountId/payments" 'POST' @{note='Online full settlement'} 201
     Check ($onlineFull.status -eq 'Paid' -and $onlineFull.dueAmount -eq 0) 'customer online full settlement marks invoice Paid'

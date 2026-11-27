@@ -119,7 +119,9 @@ public sealed record CreateInvoiceInput(
 
 public sealed record RecordPaymentInput(
     [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal? Amount = null,
-    [property: StringLength(250)] string? Note = null);
+    [property: StringLength(250)] string? Note = null,
+    [property: Required, RegularExpression("^[a-zA-Z0-9-]{16,64}$")] string? OperationId = null,
+    [property: Range(1, long.MaxValue)] long? InvoiceId = null);
 
 public sealed record RefundDepositInput(
     [property: StringLength(500)] string? Note = null);
@@ -221,7 +223,8 @@ public sealed record CustomerRequestInput(
 public sealed record CustomerPaymentInput(
     [property: Range(1, long.MaxValue)] long? InvoiceId = null,
     [property: Range(typeof(decimal), "0.01", "9999999999.99")] decimal? Amount = null,
-    [property: StringLength(250)] string? Note = null);
+    [property: StringLength(250)] string? Note = null,
+    [property: Required, RegularExpression("^[a-zA-Z0-9-]{16,64}$")] string? OperationId = null);
 
 public sealed record CustomerSelfQueryInput(
     [property: Required, StringLength(200)] string Subject,

@@ -142,11 +142,11 @@ internal static class AdvanceChecks
         // A cash payment changes only PaidAmount/DueAmount while Status remains PartiallyPaid and PaidAt stays null.
         var cashCode = await Create(100); await Collect(cashCode, Money(750, "Cash race receipt"));
         var cashAccount = await Activate(cashCode); var cashBill = await Bill(cashAccount);
-        using (var cash = createContext()) { var s = new EfNexusStore(cash); await new BillingService(s, s).PayAsync(cashAccount, new(100), actorId); }
+        using (var cash = createContext()) { var s = new EfNexusStore(cash); await new BillingService(s, s).PayAsync(cashAccount, new(100, OperationId: Guid.NewGuid().ToString()), actorId); }
         using (var stale = createContext())
         {
             var s = new EfNexusStore(stale); await s.FindAdvanceOrderAsync(OrderNumber.Parse(cashCode)!.Value);
-            using (var cash = createContext()) { var c = new EfNexusStore(cash); await new BillingService(c, c).PayAsync(cashAccount, new(50), actorId); }
+            using (var cash = createContext()) { var c = new EfNexusStore(cash); await new BillingService(c, c).PayAsync(cashAccount, new(50, OperationId: Guid.NewGuid().ToString()), actorId); }
             await Reject(async () => { await new AdvanceService(s, s).AllocateAsync(cashCode, Allocation(cashBill.InvoiceId!.Value, 50), actorId); },
                 "A13 stale advance allocation cannot overwrite concurrent partial cash payment");
         }
@@ -180,7 +180,7 @@ internal static class AdvanceChecks
         async Task<BillingView> Pay(decimal amount, int collector, string channel, string note)
         {
             using var context = createContext(); var store = new EfNexusStore(context);
-            return await new BillingService(store, store).PayAsync(account, new(amount, note), collector, channel);
+            return await new BillingService(store, store).PayAsync(account, new(amount, note, Guid.NewGuid().ToString()), collector, channel);
         }
         var before = await History();
         var originalIds = before.Payments!.Select(p => p.Id).ToArray();
@@ -232,7 +232,7 @@ internal static class AdvanceChecks
             var staleOrder = (await staleStore.FindOrderByAccountIdAsync(account))!;
             await staleStore.FindLatestInvoiceAsync(staleOrder.Connection!.Id);
             await Pay(6756.20m, actorId, "CityOffice", "Concurrent full settlement");
-            await Reject(async () => { await new BillingService(staleStore, staleStore).PayAsync(account, new(1, "Stale receipt"), cashierId, "RetailOutlet"); },
+            await Reject(async () => { await new BillingService(staleStore, staleStore).PayAsync(account, new(1, "Stale receipt", Guid.NewGuid().ToString()), cashierId, "RetailOutlet"); },
                 "H09 a competing full settlement cannot be reported as success for an unsaved receipt");
         }
         var settled = await History();

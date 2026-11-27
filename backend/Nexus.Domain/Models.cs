@@ -231,6 +231,8 @@ public sealed class Connection
     public required string CityCode { get; set; }
     public string AccountId => $"{Type}{CityCode}{Id:D12}";
     public DateTime ActivatedAt { get; set; } = DateTime.UtcNow;
+    // Serialize invoice issuance even when the account has no existing open invoice.
+    public long BillingVersion { get; set; }
     public string Status { get; set; } = "Active"; // Active, TemporarilyInactive, PermanentlyInactive
     public string? SuspendReason { get; set; }
     public DateTime? SuspendedAt { get; set; }
@@ -412,6 +414,9 @@ public sealed class PaymentTransaction
     public RetailShop? RetailShop { get; set; }
     public string Channel { get; set; } = "CityOffice"; // CityOffice | RetailOutlet
     public string? Note { get; set; }
+    // Null for historical payments and advance allocations, which have their own operation ledger.
+    public string? OperationId { get; set; }
+    public string? RequestFingerprint { get; set; }
 }
 
 public sealed class ServiceFeedback

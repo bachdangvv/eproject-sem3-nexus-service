@@ -434,11 +434,6 @@ export function HomePage({
                       City {trackResult.cityCode}
                       {trackResult.accountId ? ` · Account ${trackResult.accountId}` : ''}
                     </Text>
-                    {trackResult.type === 'account' && trackResult.dueAmount != null && (
-                      <Text type="supporting" hasTabularNumbers>
-                        Balance Due: {formatUsd(trackResult.dueAmount)}
-                      </Text>
-                    )}
                   </VStack>
                 )}
               </VStack>

@@ -34,7 +34,6 @@ public sealed class CustomerPortalService(
     IStaffStore staff,
     ICatalogStore catalog,
     IOperationsStore operations,
-    IBillingStore bills,
     BillingService billing,
     OperationsService operationsService,
     IPasswordService passwords)
@@ -262,22 +261,9 @@ public sealed class CustomerPortalService(
         if (order is null || order.Request.CustomerId != customer.Id || order.Connection is null)
             throw new UseCaseException(UseCaseFailure.NotFound);
 
-        if (input?.InvoiceId is { } invoiceId)
-        {
-            var invoice = await portal.FindInvoiceForConnectionAsync(order.Connection.Id, invoiceId)
-                ?? throw new UseCaseException(UseCaseFailure.NotFound, "Invoice not found.");
-
-            if (invoice.Status == "RolledOver")
-                throw new UseCaseException(UseCaseFailure.Conflict, "Cannot record payment against a rolled-over invoice.");
-
-            var latest = await bills.ReadLatestInvoiceAsync(order.Connection.Id);
-            if (latest is not null && latest.Id != invoice.Id)
-                throw new UseCaseException(UseCaseFailure.Conflict, "Only the current active invoice can be paid.");
-        }
-
         return await billing.PayAsync(
             accountId,
-            new RecordPaymentInput(input?.Amount, input?.Note),
+            new RecordPaymentInput(input?.Amount, input?.Note, input?.OperationId, input?.InvoiceId),
             employee.Id,
             "CustomerPortal");
     }

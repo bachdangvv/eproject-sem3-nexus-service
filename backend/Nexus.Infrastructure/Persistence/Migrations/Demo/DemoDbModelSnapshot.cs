@@ -168,6 +168,10 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.Property<int?>("AssignedProductId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("BillingVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("CityCode")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -766,11 +770,19 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                         .HasMaxLength(250)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("PaidAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("PaidById")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("RetailShopId")
                         .HasColumnType("INTEGER");
@@ -778,6 +790,9 @@ namespace Nexus.Infrastructure.Persistence.Migrations.Demo
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
 
                     b.HasIndex("PaidById");
 

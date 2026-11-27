@@ -293,7 +293,6 @@ export interface PublicTrackView {
   status: OrderStatus | ConnectionStatus | 'ACTIVE';
   cityCode: string;
   accountId: string | null;
-  dueAmount?: number | null;
 }
 
 export interface LoginInput {
@@ -521,6 +520,7 @@ export interface CustomerRequestInput {
 }
 
 export interface CustomerPaymentInput {
+  operationId?: string;
   invoiceId?: number | null;
   amount?: number | null;
   note?: string | null;
@@ -570,6 +570,8 @@ export interface CreateInvoiceInput {
 }
 
 export interface RecordPaymentInput {
+  operationId?: string;
+  invoiceId?: number | null;
   amount?: number;
   channel?: string;
   note?: string;

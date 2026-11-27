@@ -243,6 +243,7 @@ erDiagram
         string Type
         string CityCode
         datetime ActivatedAt
+        long BillingVersion "invoice issuance concurrency token"
         string Status
         string SuspendReason
         datetime SuspendedAt
@@ -342,6 +343,8 @@ erDiagram
         int RetailShopId FK
         string Channel
         string Note
+        string OperationId UK "nullable for historical and advance payments"
+        string RequestFingerprint "nullable request identity"
     }
     SERVICE_FEEDBACK {
         long Id PK

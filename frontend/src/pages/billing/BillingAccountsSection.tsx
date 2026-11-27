@@ -233,7 +233,7 @@ export function BillingAccountsSection({
       processingPaymentRef.current ||
       generatingBillRef.current
     ) {
-      return;
+      return false;
     }
     const prevRecord =
       records.find((r) => r.accountId === normalized) ??
@@ -245,7 +245,7 @@ export function BillingAccountsSection({
 
     try {
       const updated = await recordPayment(normalized, input);
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       onRecordUpsert(updated);
       onSelectAccount(updated.accountId);
       setDrawerRecord((prev) =>
@@ -259,8 +259,9 @@ export function BillingAccountsSection({
             : ''
         }.`,
       });
+      return true;
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       const msg = formatBillingError(
         err,
         normalized,
@@ -273,6 +274,7 @@ export function BillingAccountsSection({
       if (err instanceof ApiError && err.status === 409) {
         void performLookup(normalized, true, true);
       }
+      return false;
     } finally {
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
@@ -697,7 +699,7 @@ export function BillingAccountsSection({
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
-        onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRecordPayment={handleRecordPayment}
       />
     </VStack>
   );

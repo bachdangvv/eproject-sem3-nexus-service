@@ -178,6 +178,10 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.Property<int?>("AssignedProductId")
                         .HasColumnType("int");
 
+                    b.Property<long>("BillingVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<string>("CityCode")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -795,11 +799,19 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTime>("PaidAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("PaidById")
                         .HasColumnType("int");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<int?>("RetailShopId")
                         .HasColumnType("int");
@@ -807,6 +819,10 @@ namespace Nexus.Infrastructure.Persistence.Migrations.SqlServer
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique()
+                        .HasFilter("[OperationId] IS NOT NULL");
 
                     b.HasIndex("PaidById");
 

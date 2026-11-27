@@ -18,7 +18,6 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   CopyableId,
-  formatUsd,
   OrderLifecycleStepper,
   OrderStatusPill,
   ServiceTypeToken,
@@ -195,13 +194,6 @@ export function LandingTrackPage(): JSX.Element {
               <MetadataListItem label="City Code">
                 <Text weight="semibold">City {trackResult.cityCode}</Text>
               </MetadataListItem>
-              {trackResult.type === 'account' && trackResult.dueAmount != null && (
-                <MetadataListItem label="Balance Due">
-                  <Text weight="semibold" hasTabularNumbers>
-                    {formatUsd(trackResult.dueAmount)}
-                  </Text>
-                </MetadataListItem>
-              )}
             </MetadataList>
           </VStack>
         </Card>

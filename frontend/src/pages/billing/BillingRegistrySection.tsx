@@ -264,7 +264,7 @@ export function BillingRegistrySection({
       processingPaymentRef.current ||
       generatingBillRef.current
     ) {
-      return;
+      return false;
     }
     const prevRecord =
       recordsRef.current.find((r) => r.accountId === normalized) ??
@@ -276,7 +276,7 @@ export function BillingRegistrySection({
 
     try {
       const updated = await recordPayment(normalized, input);
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       onRecordUpsert(updated);
       setDrawerRecord((prev) =>
         prev && prev.accountId === updated.accountId ? updated : prev,
@@ -289,8 +289,9 @@ export function BillingRegistrySection({
             : ''
         }.`,
       });
+      return true;
     } catch (err) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       const msg = formatBillingError(
         err,
         normalized,
@@ -311,6 +312,7 @@ export function BillingRegistrySection({
           })
           .catch(() => { });
       }
+      return false;
     } finally {
       processingPaymentRef.current = false;
       if (isMountedRef.current) {
@@ -595,7 +597,7 @@ export function BillingRegistrySection({
         onDismissError={() => setDrawerError(null)}
         onRefresh={(id) => void handleRefreshDrawer(id)}
         onCreateBill={(id, input) => void handleCreateBill(id, input)}
-        onRecordPayment={(id, input) => void handleRecordPayment(id, input)}
+        onRecordPayment={handleRecordPayment}
       />
     </VStack>
   );

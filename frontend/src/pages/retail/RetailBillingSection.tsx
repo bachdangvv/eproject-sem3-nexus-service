@@ -216,6 +216,7 @@ export function RetailBillingSection({
     setDrawerError(null);
 
     const input: RecordPaymentInput = {
+      invoiceId: selectedRecord.invoiceId,
       amount: validatedAmount,
       channel: 'RetailOutlet',
       note: paymentNote.trim() || 'In-store retail counter collection',

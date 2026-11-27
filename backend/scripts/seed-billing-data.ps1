@@ -3,6 +3,10 @@ $ErrorActionPreference = 'Stop'
 $origin = 'http://127.0.0.1:5168'
 
 function Call($client, [string]$path, [string]$method = 'GET', $body = $null, [int]$expected = 200) {
+    if ($method -eq 'POST' -and $path -match '/payments?$') {
+        if ($null -eq $body) { $body = @{} }
+        if (-not $body.ContainsKey('operationId')) { $body.operationId = [Guid]::NewGuid().ToString() }
+    }
     $parameters = @{
         Uri = "$origin/api$path"
         Method = $method

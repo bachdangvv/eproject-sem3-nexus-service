@@ -11,6 +11,7 @@ var directory = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "
 Directory.CreateDirectory(directory);
 var path = Path.Combine(directory, "legacy.db");
 var sqlServer = args.Contains("--sqlserver");
+await BillingSafetyChecks.CheckLegacyAsync(sqlServer, directory);
 var databaseName = $"NexusDepositCheck_{Guid.NewGuid():N}";
 NexusDb CreateContext() => sqlServer
     ? new SqlServerDb(new DbContextOptionsBuilder<SqlServerDb>().UseSqlServer($"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Integrated Security=True;TrustServerCertificate=True;Connect Timeout=15").Options)
@@ -32,7 +33,7 @@ ServiceOrder Order()
 {
     var request = new ServiceRequest
     {
-        Customer = customer, Plan = plan, PlanName = plan.Name, Type = "B", CityCode = "101", Address = "Fixture",
+        Customer = customer, Plan = plan, PlanName = plan.Name, Type = "B", CityCode = "101", Address = $"Fixture {Guid.NewGuid():N}",
         SnapshotPrice = 225, ConnectionCount = 1, CreatedById = actor.Id
     };
     var order = request.Confirm(actor.Id);
@@ -41,8 +42,15 @@ ServiceOrder Order()
     order.Activate(actor.Id);
     order.Deposit = null;
     order.Advance = null;
-    db.Add(order);
-    db.SaveChanges();
+    // This fixture intentionally predates the current model's connection/payment columns.
+    db.Database.ExecuteSqlInterpolated($"INSERT INTO Requests (CustomerId, PlanId, PlanName, Type, CityCode, Address, HasNexusLandline, CreatedAt, CreatedById, Confirmed, ConnectionCount, SnapshotPrice) VALUES ({customer.Id}, {plan.Id}, {plan.Name}, {"B"}, {"101"}, {request.Address}, {false}, {request.CreatedAt}, {actor.Id}, {true}, {1}, {225m})");
+    request.Id = db.Database.SqlQuery<int>($"SELECT Id AS Value FROM Requests WHERE Address = {request.Address}").Single();
+    order.RequestId = request.Id;
+    db.Database.ExecuteSqlInterpolated($"INSERT INTO Orders (RequestId, Status, CreatedAt) VALUES ({request.Id}, {3}, {order.CreatedAt})");
+    order.Id = db.Database.SqlQuery<long>($"SELECT Id AS Value FROM Orders WHERE RequestId = {request.Id}").Single();
+    order.Connection!.OrderId = order.Id;
+    db.Database.ExecuteSqlInterpolated($"INSERT INTO Connections (OrderId, Type, CityCode, ActivatedAt, Status) VALUES ({order.Id}, {"B"}, {"101"}, {order.Connection.ActivatedAt}, {"Active"})");
+    order.Connection.Id = db.Database.SqlQuery<long>($"SELECT Id AS Value FROM Connections WHERE OrderId = {order.Id}").Single();
     return order;
 }
 
@@ -56,20 +64,19 @@ Invoice Bill(ServiceOrder order, string suffix, string status, decimal paid)
         PaidAt = status == "Paid" ? DateTime.UtcNow.AddDays(-2) : null,
         PaidById = status == "Paid" ? actor.Id : null
     };
-    if (paid > 0) invoice.Payments.Add(new PaymentTransaction { Amount = paid, PaidById = actor.Id, Channel = "CityOffice", PaidAt = DateTime.UtcNow.AddDays(-2) });
-    db.Invoices.Add(invoice);
-    db.SaveChanges();
+    db.Database.ExecuteSqlInterpolated($"INSERT INTO Invoices (ConnectionId, InvoiceNumber, BillingPeriodStart, BillingPeriodEnd, RentalAmount, LocalMinutes, StdMinutes, MobileMinutes, CallUsageAmount, EquipmentFee, Subtotal, DiscountAmount, DiscountPercent, TaxRate, TaxAmount, DepositAmount, PreviousDueBalance, TotalAmount, PaidAmount, DueAmount, Status, CreatedAt, PaidAt, PaidById) VALUES ({invoice.ConnectionId}, {invoice.InvoiceNumber}, {invoice.BillingPeriodStart}, {invoice.BillingPeriodEnd}, {225m}, {0m}, {0m}, {0m}, {0m}, {0m}, {225m}, {0m}, {0}, {invoice.TaxRate}, {27.54m}, {500m}, {0m}, {752.54m}, {paid}, {invoice.DueAmount}, {status}, {invoice.CreatedAt}, {invoice.PaidAt}, {invoice.PaidById})");
+    invoice.Id = db.Database.SqlQuery<long>($"SELECT Id AS Value FROM Invoices WHERE InvoiceNumber = {invoice.InvoiceNumber}").Single();
+    if (paid > 0)
+        db.Database.ExecuteSqlInterpolated($"INSERT INTO Payments (InvoiceId, Amount, PaidById, Channel, PaidAt) VALUES ({invoice.Id}, {paid}, {actor.Id}, {"CityOffice"}, {DateTime.UtcNow.AddDays(-2)})");
     return invoice;
 }
 
 var paidOrder = Order(); Bill(paidOrder, "PAID", "Paid", 752.54m);
 var partialOrder = Order(); Bill(partialOrder, "PARTIAL", "PartiallyPaid", 300);
 var unknownOrder = Order();
-unknownOrder.Connection!.RefundAmount = 500; unknownOrder.Connection.RefundStatus = "Pending";
+db.Database.ExecuteSqlInterpolated($"UPDATE Connections SET RefundAmount = {500m}, RefundStatus = {"Pending"} WHERE Id = {unknownOrder.Connection!.Id}");
 var refundedOrder = Order(); Bill(refundedOrder, "REFUNDED", "Paid", 752.54m);
-refundedOrder.Connection!.Status = "PermanentlyInactive";
-refundedOrder.Connection.RefundStatus = "Refunded"; refundedOrder.Connection.RefundAmount = 500;
-refundedOrder.Connection.RefundedAt = DateTime.UtcNow.AddDays(-1); refundedOrder.Connection.RefundedById = actor.Id;
+db.Database.ExecuteSqlInterpolated($"UPDATE Connections SET Status = {"PermanentlyInactive"}, RefundStatus = {"Refunded"}, RefundAmount = {500m}, RefundedAt = {DateTime.UtcNow.AddDays(-1)}, RefundedById = {actor.Id} WHERE Id = {refundedOrder.Connection!.Id}");
 var rolledOrder = Order(); Bill(rolledOrder, "ROLLED", "RolledOver", 300);
 var multipleOrder = Order(); Bill(multipleOrder, "MULTIPLE-1", "Paid", 752.54m); Bill(multipleOrder, "MULTIPLE-2", "Paid", 752.54m);
 db.SaveChanges();
@@ -177,6 +184,7 @@ var excessRefund = await deposits.PostAsync(multipleOrder.Code,
     new DepositMoneyInput(1000, Guid.NewGuid().ToString(), "Cheque", "RETURN-TWO-RECEIPTS", "Return all historical deposit cash actually held"), actor.Id, true);
 Check(excessRefund.Balance == 0 && excessRefund.RefundedAmount == 1000, "L13 historical excess cash can be returned without permitting new over-collection");
 await AdvanceChecks.RunAsync(CreateContext, actor.Id, customer.Id);
+await BillingSafetyChecks.RunAsync(CreateContext, actor.Id, customer.Id);
 Console.WriteLine($"Legacy deposit, advance and payment-history checks passed. Isolated database: {(sqlServer ? databaseName : path)}");
 
 static string Snapshot(Invoice invoice) => JsonSerializer.Serialize(new

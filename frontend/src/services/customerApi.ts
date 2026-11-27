@@ -20,6 +20,8 @@ import type {
   RequestView,
 } from '../types/nexus';
 import { apiRequest, normalizeOptionalString } from './apiClient';
+import { getSession } from './authApi';
+import { withPaymentOperation } from './paymentRetry';
 
 export function getProfile(): Promise<CustomerProfileView> {
   return apiRequest<CustomerProfileView>('/customer/profile');
@@ -92,21 +94,14 @@ export function getBilling(): Promise<BillingView[]> {
   return apiRequest<BillingView[]>('/customer/billing');
 }
 
-export function payBillingOnline(
+export async function payBillingOnline(
   accountId: string,
   input?: CustomerPaymentInput,
 ): Promise<BillingView> {
-  return apiRequest<BillingView>(
-    `/customer/billing/${encodeURIComponent(accountId.trim().toUpperCase())}/payments`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        invoiceId: input?.invoiceId ?? null,
-        amount: input?.amount ?? null,
-        note: normalizeOptionalString(input?.note),
-      }),
-    },
-  );
+  const path = `/customer/billing/${encodeURIComponent(accountId.trim().toUpperCase())}/payments`;
+  const session = await getSession();
+  return withPaymentOperation(`${session.username}:${path}`, input, body =>
+    apiRequest<BillingView>(path, { method: 'POST', body: JSON.stringify(body) }));
 }
 
 export function getPlanChanges(): Promise<PlanChangeRequestView[]> {

@@ -1,6 +1,6 @@
 # Luồng test tích hợp: bulk, cọc, advance và lịch sử thanh toán
 
-Tài liệu này kiểm tra **bốn phần đã sửa**: ưu đãi bulk đúng phạm vi, thu/hoàn cọc, advance riêng và lịch sử payment nhiều kỳ. Bốn blocker mới trong audit (migration Review1, bill trùng kỳ, retry thu cước trực tiếp, public due) **vẫn còn mở**; cuối tài liệu có kết quả không đạt cần giữ riêng.
+Tài liệu này kiểm tra **bốn phần đã sửa**: ưu đãi bulk đúng phạm vi, thu/hoàn cọc, advance riêng và lịch sử payment nhiều kỳ. Bốn blocker audit B01–B04 cũng đã được sửa ngày 27/11; phần E cập nhật các ca hồi quy. Quy tắc gửi lại payment được mô tả trong [API](api.md).
 
 ## Chuẩn bị
 
@@ -91,18 +91,18 @@ Tạo **Order mới**, một đường Broadband cùng gói QA: cọc phải thu
 | Quyền | Technical/Admin/Customer không được ghi thu/phân bổ/hoàn bằng route nhân viên ngoài quyền. Retail không được hoàn hoặc phân bổ advance. Customer khác không thấy sổ/bill/payment của khách thử |
 | Trên 10 payment | Trước khi Terminate, có thể thêm bảy khoản thu mới mỗi khoản 1 USD trên bill 2, ghi bảy note khác nhau. Lịch sử từ 5 thành 12 payment/tổng 957, bill 2 Paid 357/Due 4.093,80. Page 2 có hai bản ghi còn lại; đổi/xóa lọc quay về page 1. Không thực hiện nhánh này rồi tiếp tục đối chiếu số 950/4.100,80 của A20 |
 
-## E. Những ca vẫn không đạt do blocker mới
+## E. Hồi quy bốn blocker audit
 
-Các ca dưới đây là backlog từ audit, **chưa sửa trong bốn phần của tài liệu này**. Không đánh PASS chỉ vì luồng A–D chạy được.
+Các ca dưới đây có kiểm thử riêng trong BillingSafetyChecks, frontend payment-retry tests và smoke HTTP. Kết quả luồng A–D không thay thế kiểm thử B01–B04.
 
-| Ca | Kết quả nghiệm thu cần có | Hiện tại đã tái hiện |
+| Ca | Kết quả cần giữ | Bản sửa và kiểm thử |
 | --- | --- | --- |
-| B01 / R2-04 | Nâng DB từ Review1Billing vẫn giữ bill Paid, Amount/PaidAt và mã cũ | FinancialBilling xóa BillingRecords mà chưa chuyển dữ liệu; chỉ thử trên bản sao DB riêng |
-| B02 / R2-07 | Gửi lại cùng kỳ trả bill cũ hoặc bị từ chối, không tạo bill mới | POST cùng body period có thể tạo invoice thứ hai |
-| B03 / R2-08 | Retry cùng một khoản thu cước không ghi thêm payment | Gửi amount=100/note giống nhau hai lần đang có thể ghi Paid thành 200; direct payment chưa có operationId |
-| B04 / R2-23 | Theo sheet, guest không đọc được số nợ | Public tracking hiện vẫn trả dueAmount |
+| B01 / R2-04 | Nâng từ Review1Billing giữ bill Paid/Unpaid, Amount/PaidAt và account cũ | Archive/import dữ liệu, giữ chứng từ thiếu rõ ràng; EF test từ đúng schema Review 1 |
+| B02 / R2-07 | Cùng kỳ hoặc chồng kỳ không tạo invoice thứ hai | 409 trước mutation, BillingVersion kiểm tra write đồng thời; EF và HTTP test |
+| B03 / R2-08 | Retry cùng khoản thu không ghi payment mới | OperationId unique/fingerprint, replay sau rollover, payload mismatch 409; client/EF/HTTP test |
+| B04 / R2-23 | Guest không đọc được số nợ | Public endpoint/type/UI không có balance; HTTP test cả khi account đang nợ |
 
-Chi tiết và bằng chứng: [đối chiếu 38 task](task-sheet-verification.md). Không thử B01 lên database local đang sử dụng. Đối với A07/A10, chọn hai kỳ khác nhau và chỉ submit một lần; các ca retry không đạt phải ghi vào bug log riêng.
+Chi tiết request và response: [API](api.md). Không thử migration trên database local đang sử dụng; dữ liệu đã bị xóa ở bản cũ cần backup để phục hồi. Khi gọi payment API thủ công, gửi operationId và giữ mã khi retry. Đối với A07/A10, chọn hai kỳ không chồng lấn.
 
 ## F. Chạy lại bộ kiểm thử tự động hiện có
 
@@ -116,6 +116,6 @@ dotnet run --project backend/Nexus.DepositChecks --no-build --no-restore
 dotnet run --project backend/Nexus.DepositChecks --no-build --no-restore -- --sqlserver
 ```
 
-Smoke và EF/service tạo database test riêng. Bộ hiện có kiểm tra bulk, cọc, advance, lịch sử và tranh chấp liên quan; không bao phủ đủ B01–B04 nên kết quả xanh chưa đóng các blocker này. Để chạy A–D bằng UI, ghi lại ngày/người chạy, Order/Account/bill thực tế, số tiền quan sát, PASS/FAIL và ảnh; đây là luồng hướng dẫn, không phải biên bản xác nhận bạn đã chạy các bước.
+Smoke và EF/service tạo database test riêng, có các ca hồi quy B01–B04 như phần E. SQL Server runtime cần chạy thêm ở máy có LocalDB. Để chạy A–D bằng UI, ghi lại ngày/người chạy, Order/Account/bill thực tế, số tiền quan sát, PASS/FAIL và ảnh; đây là luồng hướng dẫn, không phải biên bản xác nhận đã chạy UI.
 
 Tài liệu sâu hơn: [cọc](deposit-flow.md), [advance](advance-flow.md), [payment history](payment-history-flow.md).
